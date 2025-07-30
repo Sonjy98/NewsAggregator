@@ -4,7 +4,7 @@ import "./App.css";
 function App() {
   return (
     <main>
-      <h1>📰 My News Feed</h1>
+      <h1>My Epic News Feed</h1>
       <NewsFeed />
     </main>
   );
