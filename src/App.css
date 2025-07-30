@@ -1,0 +1,62 @@
+/* Layout and root setup */
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Roboto, sans-serif;
+  background-color: #f5f7fa;
+  color: #333;
+}
+
+#root {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1rem;
+}
+
+/* App title */
+h1 {
+  font-size: 2.5rem;
+  margin-bottom: 2rem;
+  font-weight: 700;
+  text-align: center;
+  color: #222;
+}
+
+/* NewsCard styles */
+.news-card {
+  background-color: white;
+  border-radius: 12px;
+  padding: 1.5rem;
+  margin-bottom: 1.5rem;
+  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.06);
+  text-align: left;
+  transition: transform 0.2s ease, box-shadow 0.2s ease;
+}
+
+.news-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 8px 16px rgba(0, 0, 0, 0.08);
+}
+
+.news-card h2 {
+  font-size: 1.5rem;
+  margin: 0 0 0.5rem;
+  color: #222;
+}
+
+.news-card .meta {
+  font-size: 0.875rem;
+  color: #666;
+  margin-bottom: 0.75rem;
+}
+
+.news-card p {
+  margin: 0;
+  line-height: 1.6;
+}
+
+/* Sentinel text */
+.loading, .done {
+  text-align: center;
+  color: #888;
+  margin-top: 2rem;
+}
