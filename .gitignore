@@ -24,3 +24,5 @@ dist-ssr
 *.sw?
 NewsFeedBackend/bin
 NewsFeedBackend/obj
+
+.env
