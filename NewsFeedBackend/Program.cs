@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using NewsFeedBackend.Data;
 using System.Text;
+using NewsFeedBackend; 
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -47,6 +48,7 @@ builder.Services
     });
 
 builder.Services.AddAuthorization();
+builder.Services.AddTransient<NewsFeedBackend.IEmailSender, NewsFeedBackend.EmailSender>();
 
 var app = builder.Build();
 
