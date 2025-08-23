@@ -1,0 +1,70 @@
+/* Only styles inside the .wrap subtree are affected */
+.wrap {
+  /* local design tokens (don’t leak globally) */
+  --card:#fff; --text:#111827; --muted:#6b7280; --primary:#3b82f6; --radius:16px;
+
+  min-height:100dvh;
+  display:grid;
+  place-items:center;
+  padding:clamp(16px,3vw,40px);
+  color:var(--text);
+}
+.wrap *, .wrap *::before, .wrap *::after { box-sizing:border-box; }
+
+.card{
+  width:min(92vw, 420px);
+  background:var(--card);
+  border:1px solid rgba(17,24,39,.06);
+  border-radius:var(--radius);
+  padding:clamp(18px,2.8vw,28px);
+  box-shadow:0 10px 30px rgba(2,6,23,.12);
+}
+
+.title{ margin:0 0 12px; font-size:clamp(20px,2.2vw,24px); font-weight:700; letter-spacing:.2px; }
+.form{ display:grid; gap:12px; }
+.label{ font-size:13px; color:var(--muted); }
+
+/* Inputs stay light, with black text */
+.input{
+  width:100%;
+  padding:12px 14px;
+  border:1px solid #e5e7eb;
+  border-radius:12px;
+  background:#fff;
+  color:#111827; caret-color:#111827;
+  outline:none;
+  transition:border-color .16s, box-shadow .16s;
+}
+.input::placeholder{ color:#9ca3af; }
+.input:focus{ border-color:var(--primary); box-shadow:0 0 0 4px rgba(59,130,246,.12); }
+/* Autofill fix */
+.input:-webkit-autofill,
+.input:-webkit-autofill:hover,
+.input:-webkit-autofill:focus{
+  -webkit-text-fill-color:#111827 !important;
+  box-shadow:0 0 0 1000px #fff inset !important;
+  -webkit-box-shadow:0 0 0 1000px #fff inset !important;
+  transition: background-color 9999s ease-out 0s;
+}
+
+.btnPrimary{
+  width:100%;
+  padding:12px 14px;
+  border:none;
+  border-radius:12px;
+  background:var(--primary);
+  color:#fff; font-weight:600;
+  cursor:pointer;
+  transition:filter .15s, transform .02s;
+}
+.btnPrimary:active{ transform:translateY(1px); }
+.btnPrimary:disabled{ filter:saturate(.3); cursor:not-allowed; }
+
+.footer{ margin-top:10px; text-align:center; }
+.linkBtn{ background:none; border:none; color:var(--primary); font-size:14px; padding:6px 8px; cursor:pointer; }
+
+.alert{
+  background:#fee2e2; border:1px solid #fecaca; color:#b91c1c;
+  padding:10px 12px; border-radius:12px; margin:6px 0 8px; font-size:14px;
+}
+.meta{ margin-top:10px; font-size:12px; color:var(--muted); word-break:break-all; }
