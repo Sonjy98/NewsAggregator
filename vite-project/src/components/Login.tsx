@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { AuthApi, saveSession, API_BASE } from "../lib/auth";
+import s from "./auth.module.css"; 
 
 type Mode = "login" | "register";
 
@@ -24,32 +25,41 @@ export default function Login(props: { onLoggedIn?: (u: { userId: number; email:
   }
 
   return (
-    <div style={{ maxWidth: 420, margin: "60px auto", padding: 24, border: "1px solid #ddd", borderRadius: 12 }}>
-      <h2 style={{ marginBottom: 16 }}>{mode === "login" ? "Log in" : "Create account"}</h2>
-      {err && <div style={{ background: "#fee", padding: 8, borderRadius: 8, marginBottom: 12 }}>{err}</div>}
-      <form onSubmit={handleSubmit}>
-        <label style={{ display: "block", marginBottom: 8 }}>Email</label>
-        <input type="email" value={email} onChange={e => setEmail(e.target.value)}
-               required style={{ width: "100%", padding: 10, marginBottom: 12 }} />
-        <label style={{ display: "block", marginBottom: 8 }}>Password</label>
-        <input type="password" value={password} onChange={e => setPassword(e.target.value)}
-               required style={{ width: "100%", padding: 10, marginBottom: 20 }} />
-        <button type="submit" style={{ width: "100%", padding: 10 }}>
+  <div className={s.wrap}>
+    <div className={s.card}>
+      <h2 className={s.title}>{mode === "login" ? "Log in" : "Create account"}</h2>
+
+      {err && <div className={s.alert} role="alert">{err}</div>}
+
+      <form className={s.form} onSubmit={handleSubmit} noValidate>
+        <label className={s.label} htmlFor="email">Email</label>
+        <input id="email" className={s.input} type="email" value={email}
+               onChange={(e) => setEmail(e.target.value)} required autoComplete="email" />
+
+        <label className={s.label} htmlFor="password">Password</label>
+        <input id="password" className={s.input} type="password" value={password}
+               onChange={(e) => setPassword(e.target.value)} required
+               autoComplete={mode === "login" ? "current-password" : "new-password"} />
+
+        <button type="submit" className={s.btnPrimary}>
           {mode === "login" ? "Log in" : "Register"}
         </button>
       </form>
-      <div style={{ marginTop: 12, textAlign: "center" }}>
+
+      <div className={s.footer}>
         {mode === "login" ? (
-          <button onClick={() => setMode("register")} style={{ background: "none", border: "none", color: "#06f", cursor: "pointer" }}>
+          <button type="button" className={s.linkBtn} onClick={() => setMode("register")}>
             Need an account? Register
           </button>
         ) : (
-          <button onClick={() => setMode("login")} style={{ background: "none", border: "none", color: "#06f", cursor: "pointer" }}>
+          <button type="button" className={s.linkBtn} onClick={() => setMode("login")}>
             Have an account? Log in
           </button>
         )}
       </div>
-      <p style={{ marginTop: 16, fontSize: 12, color: "#666" }}>API: {API_BASE}</p>
+
+      <p className={s.meta}>API: {API_BASE}</p>
     </div>
-  );
+  </div>
+);
 }

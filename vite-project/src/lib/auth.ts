@@ -27,6 +27,20 @@ export function getUser()  {
   const raw = localStorage.getItem("auth_user");
   return raw ? (JSON.parse(raw) as { userId: number; email: string }) : null;
 }
+
+export function getUserEmail(): string | null {
+  const u = getUser();
+  if (u?.email) return u.email;
+  const t = getToken();
+  if (!t) return null;
+  try {
+    const payload = JSON.parse(atob(t.split(".")[1]));
+    return payload?.email ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function logout() {
   localStorage.removeItem("auth_token");
   localStorage.removeItem("auth_user");
