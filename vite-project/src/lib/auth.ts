@@ -1,22 +1,15 @@
 import type { AuthResponse, LoginRequest, RegisterRequest } from "../types/auth";
-
-export const API_BASE = import.meta.env.VITE_API_BASE;
-
-async function apiPost<TReq, TRes>(path: string, body: TReq): Promise<TRes> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(text || "Request failed");
-  return text ? (JSON.parse(text) as TRes) : ({} as TRes);
-}
+import { api } from "./api"
 
 export const AuthApi = {
-  login:    (req: LoginRequest)    => apiPost<LoginRequest,    AuthResponse>("/auth/login", req),
-  register: (req: RegisterRequest) => apiPost<RegisterRequest, AuthResponse>("/auth/register", req),
-};
+  // NOTE: paths do NOT include /api; api.ts already has baseURL: '/api' or VITE_API_BASE
+  login(req: LoginRequest): Promise<AuthResponse> {
+    return api.post("/auth/login", req).then(r => r.data)
+  },
+  register(req: RegisterRequest): Promise<AuthResponse> {
+    return api.post("/auth/register", req).then(r => r.data)
+  },
+}
 
 export function saveSession(data: AuthResponse) {
   localStorage.setItem("auth_token", data.token);
