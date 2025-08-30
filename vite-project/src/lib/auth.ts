@@ -14,8 +14,8 @@ async function apiPost<TReq, TRes>(path: string, body: TReq): Promise<TRes> {
 }
 
 export const AuthApi = {
-  login:    (req: LoginRequest)    => apiPost<LoginRequest,    AuthResponse>("/api/auth/login", req),
-  register: (req: RegisterRequest) => apiPost<RegisterRequest, AuthResponse>("/api/auth/register", req),
+  login:    (req: LoginRequest)    => apiPost<LoginRequest,    AuthResponse>("/auth/login", req),
+  register: (req: RegisterRequest) => apiPost<RegisterRequest, AuthResponse>("/auth/register", req),
 };
 
 export function saveSession(data: AuthResponse) {
