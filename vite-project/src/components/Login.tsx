@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { AuthApi, saveSession, API_BASE } from "../lib/auth";
+import { AuthApi, saveSession} from "../lib/auth";
+import { api } from "../lib/api";
 import s from "./auth.module.css"; 
 
 type Mode = "login" | "register";
@@ -9,18 +10,24 @@ export default function Login(props: { onLoggedIn?: (u: { userId: number; email:
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<Mode>("login");
   const [err, setErr] = useState("");
+  const [pending, setPending] = useState(false)
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
-    setErr("");
+   async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    if (pending) return
+    setErr("")
+    setPending(true)
     try {
       const data = mode === "login"
         ? await AuthApi.login({ email, password })
-        : await AuthApi.register({ email, password });
-      saveSession(data);
-      props.onLoggedIn?.({ userId: data.userId, email: data.email });
+        : await AuthApi.register({ email, password })
+
+      saveSession(data)
+      props.onLoggedIn?.({ userId: data.userId, email: data.email })
     } catch (e) {
-      setErr(e instanceof Error ? e.message : "Failed");
+      setErr(e instanceof Error ? e.message : "Failed")
+    } finally {
+      setPending(false)
     }
   }
 
@@ -58,7 +65,7 @@ export default function Login(props: { onLoggedIn?: (u: { userId: number; email:
         )}
       </div>
 
-      <p className={s.meta}>API: {API_BASE}</p>
+      <p className={s.meta}>API: {api.defaults.baseURL || "/api"}</p>
     </div>
   </div>
 );

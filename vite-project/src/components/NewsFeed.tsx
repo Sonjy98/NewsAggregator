@@ -1,53 +1,31 @@
-import { useEffect, useState } from "react";
-import type { Article } from "../types/Article";
+import { useQuery } from '@tanstack/react-query';
 import NewsCard from "./NewsCard";
-import { API_BASE, getToken, logout } from "../lib/auth";
+import type { Article } from "../types/Article";
+import { api } from "../lib/api";
 
-export default function NewsFeed({ refreshKey = 0 }: { refreshKey?: number }) {
-  const [articles, setArticles] = useState<Article[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [err, setErr] = useState("");
+function mapResults(rs: any[]): Article[] {
+  return (rs ?? []).map((it: any, i: number) => ({
+    id: it?.link || String(i),
+    title: it?.title ?? "Untitled",
+    body: it?.description || "No description available.",
+    author: Array.isArray(it?.creator) ? (it.creator[0] ?? "Unknown") : (it?.creator ?? "Unknown"),
+    publishedAt: it?.pubDate ?? "",
+    image: it?.image_url ?? null,
+  }));
+}
 
-  useEffect(() => {
-    const controller = new AbortController();
-    (async () => {
-      setLoading(true); setErr("");
-      try {
-        const token = getToken();
-        const res = await fetch(`${API_BASE}/api/externalnews/for-me`, {
-          headers: {
-            "Content-Type": "application/json",
-            ...(token ? { Authorization: `Bearer ${token}` } : {}),
-          },
-          signal: controller.signal,
-        });
+export default function NewsFeed() {
+  const { data, isLoading, error } = useQuery({
+    queryKey: ['news','for-me'],
+    queryFn: async (): Promise<Article[]> => {
+      const { data } = await api.get('/externalnews/for-me');
+      return mapResults(data?.results);
+    },
+  });
 
-        if (res.status === 401) { logout(); location.reload(); return; }
-        if (!res.ok) throw new Error(await res.text());
+  if (isLoading) return <p>Loading news…</p>;
+  if (error) return <p style={{ color: "crimson" }}>Error: {(error as Error).message}</p>;
+  if (!data?.length) return <p>No articles yet. Add some keywords above.</p>;
 
-        const data = await res.json();
-        const parsed: Article[] = (data?.results ?? []).map((it: any, i: number) => ({
-          id: it?.link || String(i),
-          title: it?.title ?? "Untitled",
-          body: it?.description || "No description available.",
-          author: Array.isArray(it?.creator) ? (it.creator[0] ?? "Unknown") : (it?.creator ?? "Unknown"),
-          publishedAt: it?.pubDate ?? "",
-          image: it?.image_url ?? null,
-        }));
-
-        setArticles(parsed);
-      } catch (e) {
-        if ((e as any)?.name !== "AbortError") setErr(e instanceof Error ? e.message : "Failed to load news.");
-      } finally {
-        setLoading(false);
-      }
-    })();
-    return () => controller.abort();
-  }, [refreshKey]);
-
-  if (loading) return <p>Loading news…</p>;
-  if (err) return <p style={{ color: "crimson" }}>Error: {err}</p>;
-  if (!articles.length) return <p>No articles yet. Add some keywords above.</p>;
-
-  return <div>{articles.map(a => <NewsCard key={a.id} article={a} />)}</div>;
+  return <div>{data.map(a => <NewsCard key={a.id} article={a} />)}</div>;
 }

@@ -20,11 +20,13 @@ var serverVersion = new MySqlServerVersion(new Version(8,0,0));
 builder.Services.AddDbContext<AppDbContext>(opt => opt.UseMySql(cs, serverVersion));
 
 builder.Services.AddHttpClient(); // registers IHttpClientFactory
-builder.Services.AddHttpClient("newsdata", c =>
+builder.Services.AddHttpClient("newsdata", (sp, c) =>
 {
-    c.BaseAddress = new Uri("https://newsdata.io/api/1/");
+    var cfg = sp.GetRequiredService<IConfiguration>().GetSection("NewsData");
+    c.BaseAddress = new Uri(cfg["BaseUrl"]!);
     c.Timeout = TimeSpan.FromSeconds(15);
 });
+
 
 // JWT Auth
 var jwtKey = builder.Configuration["Jwt:Key"]!;

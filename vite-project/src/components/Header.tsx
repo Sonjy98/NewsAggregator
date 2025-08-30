@@ -1,11 +1,14 @@
 import { useState } from "react";
 import s from "./header.module.css";
-import { logout, getUserEmail } from "../lib/auth";
+import { getUserEmail } from "../lib/auth";
 import { sendDigest } from "../lib/email";
 
-type Props = { title?: string };
+type Props = { 
+  title?: string; 
+  onLogout?: () => void;   // new prop 
+};
 
-export default function Header({ title = "My Epic News Feed" }: Props) {
+export default function Header({ title = "My Epic News Feed", onLogout }: Props) {
   const email = getUserEmail() ?? "";
   const [sending, setSending] = useState(false);
   const [msg, setMsg] = useState<string>("");
@@ -25,9 +28,9 @@ export default function Header({ title = "My Epic News Feed" }: Props) {
     }
   }
 
-  function onLogout() {
-    logout();
-    location.reload();
+  function handleLogout() {
+    // no location.reload()
+    onLogout?.();
   }
 
   return (
@@ -41,7 +44,7 @@ export default function Header({ title = "My Epic News Feed" }: Props) {
             <button className={`${s.btn} ${s.primary}`} onClick={onEmailMe} disabled={sending}>
               {sending ? "Sending…" : "Email me"}
             </button>
-            <button className={`${s.btn} ${s.ghost}`} onClick={onLogout}>Log out</button>
+            <button className={`${s.btn} ${s.ghost}`} onClick={handleLogout}>Log out</button>
           </div>
         </div>
       </div>

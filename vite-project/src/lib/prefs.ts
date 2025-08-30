@@ -1,21 +1,17 @@
-import { API_BASE, getToken } from "./auth";
-
-async function authed<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getToken();
-  const res = await fetch(`${API_BASE}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-    },
-    ...init,
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(text || `HTTP ${res.status}`);
-  return text ? (JSON.parse(text) as T) : ({} as T);
-}
+import { api } from './api'
 
 export const PrefsApi = {
-  list:  () => authed<string[]>("/api/preferences"),
-  add:   (keyword: string) => authed<string[]>("/api/preferences", { method: "POST", body: JSON.stringify({ keyword }) }),
-  remove:(keyword: string) => authed<void>      (`/api/preferences/${encodeURIComponent(keyword)}`, { method: "DELETE" }),
-};
+  async list(): Promise<string[]> {
+    const { data } = await api.get('/preferences')
+    return data
+  },
+
+  async add(keyword: string): Promise<string[]> {
+    const { data } = await api.post('/preferences', { keyword })
+    return data
+  },
+
+  async remove(keyword: string): Promise<void> {
+    await api.delete(`/preferences/${encodeURIComponent(keyword)}`)
+  },
+}
