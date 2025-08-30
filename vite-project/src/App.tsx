@@ -2,23 +2,29 @@ import { useState } from "react";
 import NewsFeed from "./components/NewsFeed";
 import Login from "./components/Login";
 import Preferences from "./components/Preferences";
-import { getToken, getUser } from "./lib/auth";
+import { getToken, getUser, logout } from "./lib/auth";
 import Header from "./components/Header";
 import "./App.css";
 
 export default function App() {
   const [user, setUser] = useState(getUser());
   const token = getToken();
-  const [reloadKey, setReloadKey] = useState(0);
 
   if (!token) return <Login onLoggedIn={u => setUser(u)} />;
 
-   return (
+    return (
     <>
-      <Header title="My Epic News Feed" />
+      <Header 
+  title="My Epic News Feed" 
+  onLogout={() => { 
+    logout();       // clear token/session
+    setUser(null as any);  // force App to render <Login/>
+  }} 
+/>
       <main style={{ width: "min(1100px, 92vw)", margin: "24px auto" }}>
-        <Preferences onChanged={() => setReloadKey((k) => k + 1)} />
-        <NewsFeed refreshKey={reloadKey} />
+        {/* Preferences will invalidate queries directly */}
+        <Preferences />
+        <NewsFeed />
       </main>
     </>
   );
