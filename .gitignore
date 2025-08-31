@@ -22,3 +22,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+NewsFeedBackend/bin
+NewsFeedBackend/obj
+
+.env
