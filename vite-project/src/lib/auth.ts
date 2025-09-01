@@ -2,12 +2,11 @@ import type { AuthResponse, LoginRequest, RegisterRequest } from "../types/auth"
 import { api } from "./api"
 
 export const AuthApi = {
-  // NOTE: paths do NOT include /api; api.ts already has baseURL: '/api' or VITE_API_BASE
   login(req: LoginRequest): Promise<AuthResponse> {
-    return api.post("/auth/login", req).then(r => r.data)
+    return api.post("/api/auth/login", req).then(r => r.data)
   },
   register(req: RegisterRequest): Promise<AuthResponse> {
-    return api.post("/auth/register", req).then(r => r.data)
+    return api.post("/api/auth/register", req).then(r => r.data)
   },
 }
 

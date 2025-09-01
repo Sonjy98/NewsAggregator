@@ -1,26 +1,37 @@
-// src/lib/api.ts
-import axios from 'axios'
-import { getToken, logout } from './auth'
+import axios from "axios";
+import { getToken, logout } from "./auth";
 
 export const api = axios.create({
-  baseURL: '/api',
-})
+  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:5001",
+});
 
-// attach JWT on each request
+
 api.interceptors.request.use((config) => {
-  const t = getToken()
-  if (t) config.headers.Authorization = `Bearer ${t}`
-  return config
-})
+  // JWT
+  const t = getToken();
+  if (t) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${t}`;
+  } else if (config?.headers?.Authorization) {
+    delete (config.headers as any).Authorization;
+  }
 
-// optional: central 401 handling (no hard reload)
+  let url = config.url ?? "";
+  if (!/^https?:\/\//i.test(url)) {
+    if (!url.startsWith("/")) url = "/" + url;
+    if (!url.startsWith("/api/")) url = "/api" + url;
+    config.url = url;
+  }
+
+  return config;
+});
+
 api.interceptors.response.use(
   (res) => res,
   (err) => {
     if (err?.response?.status === 401) {
-      logout()
-      // let the UI react to missing token (App will show <Login/>)
+      logout();
     }
-    return Promise.reject(err)
+    return Promise.reject(err);
   }
-)
+);
