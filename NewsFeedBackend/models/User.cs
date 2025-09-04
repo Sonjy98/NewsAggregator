@@ -5,7 +5,7 @@ namespace NewsFeedBackend.Models;
 
 public class User
 {
-    public int Id { get; set; }
+    public Guid Id { get; set; }
 
     public DateTime RegistrationDate { get; set; } = DateTime.UtcNow;
 

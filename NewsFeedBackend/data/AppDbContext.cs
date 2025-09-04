@@ -14,6 +14,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // Users
         var u = mb.Entity<User>();
         u.HasKey(x => x.Id);
+        u.Property(x => x.Id)
+         .HasColumnType("char(36)")
+         .IsRequired()
+         .ValueGeneratedNever();
         u.HasIndex(x => x.Email).IsUnique();        // unique emails
         u.Property(x => x.Email).HasMaxLength(254);
         u.Property(x => x.PasswordHash).HasMaxLength(256);

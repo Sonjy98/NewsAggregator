@@ -26,8 +26,10 @@ public class AuthController(AppDbContext db, IConfiguration cfg) : ControllerBas
 
         var user = new User
         {
+            Id = Guid.NewGuid(),
             Email = email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password)
+            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
+            RegistrationDate = DateTime.UtcNow,
         };
         db.Users.Add(user);
         await db.SaveChangesAsync();

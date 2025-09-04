@@ -90,7 +90,7 @@ public class ExternalNewsController : ControllerBase
     public async Task<IActionResult> ForMe([FromQuery] string? language = null, CancellationToken ct = default)
     {
         var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-        if (!int.TryParse(userIdStr, out var userId)) return Unauthorized("Bad user id in token.");
+        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized("Bad user id in token.");
 
         var keywords = await _db.UserPreferences
             .Where(p => p.UserId == userId)

@@ -1,5 +1,4 @@
 ﻿using System;
-using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Migrations;
 
 #nullable disable
@@ -7,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace NewsFeedBackend.Migrations
 {
     /// <inheritdoc />
-    public partial class UsersAndPreferences : Migration
+    public partial class InitialGuid : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -19,8 +18,7 @@ namespace NewsFeedBackend.Migrations
                 name: "Users",
                 columns: table => new
                 {
-                    Id = table.Column<int>(type: "int", nullable: false)
-                        .Annotation("MySql:ValueGenerationStrategy", MySqlValueGenerationStrategy.IdentityColumn),
+                    Id = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
                     RegistrationDate = table.Column<DateTime>(type: "datetime(6)", nullable: false),
                     Email = table.Column<string>(type: "varchar(254)", maxLength: 254, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4"),
@@ -37,7 +35,7 @@ namespace NewsFeedBackend.Migrations
                 name: "UserPreferences",
                 columns: table => new
                 {
-                    UserId = table.Column<int>(type: "int", nullable: false),
+                    UserId = table.Column<Guid>(type: "char(36)", nullable: false, collation: "ascii_general_ci"),
                     Keyword = table.Column<string>(type: "varchar(128)", maxLength: 128, nullable: false)
                         .Annotation("MySql:CharSet", "utf8mb4")
                 },

@@ -12,8 +12,8 @@ using NewsFeedBackend.Data;
 namespace NewsFeedBackend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20250817025941_UsersAndPreferences")]
-    partial class UsersAndPreferences
+    [Migration("20250904223253_InitialGuid")]
+    partial class InitialGuid
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
@@ -27,11 +27,8 @@ namespace NewsFeedBackend.Migrations
 
             modelBuilder.Entity("NewsFeedBackend.Models.User", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -56,8 +53,8 @@ namespace NewsFeedBackend.Migrations
 
             modelBuilder.Entity("NewsFeedBackend.Models.UserPreference", b =>
                 {
-                    b.Property<int>("UserId")
-                        .HasColumnType("int");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("Keyword")
                         .HasMaxLength(128)

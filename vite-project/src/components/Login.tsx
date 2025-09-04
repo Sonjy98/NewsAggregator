@@ -5,7 +5,7 @@ import { useAuth } from "../hooks/useAuth";
 
 type Mode = "login" | "register";
 
-export default function Login(props: { onLoggedIn?: (u: { userId: number; email: string }) => void }) {
+export default function Login(props: { onLoggedIn?: (u: { userId: string; email: string }) => void }) {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [mode, setMode] = useState<Mode>("login");
@@ -19,7 +19,7 @@ export default function Login(props: { onLoggedIn?: (u: { userId: number; email:
     if (pending) return;
     setErr("");
     const vars = { email, password };
-    const onSuccess = (u: { userId: number; email: string }) => props.onLoggedIn?.(u);
+    const onSuccess = (u: { userId: string; email: string }) => props.onLoggedIn?.(u);
 
     if (mode === "login") {
       login(vars, { onSuccess, onError: (e) => setErr(e.message) });
