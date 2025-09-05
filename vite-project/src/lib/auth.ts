@@ -17,7 +17,7 @@ export function saveSession(data: AuthResponse) {
 export function getToken() { return localStorage.getItem("auth_token"); }
 export function getUser()  {
   const raw = localStorage.getItem("auth_user");
-  return raw ? (JSON.parse(raw) as { userId: number; email: string }) : null;
+  return raw ? (JSON.parse(raw) as { userId: string; email: string }) : null;
 }
 
 export function getUserEmail(): string | null {
