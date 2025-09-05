@@ -15,14 +15,12 @@ export const queryClient = new QueryClient({
   },
   queryCache: new QueryCache({
     onError: (error, query) => {
-      // Centralized query error reporting/logging (optional)
-      // console.error('Query error:', query.queryKey, error);
+
     },
   }),
   mutationCache: new MutationCache({
     onError: (error, _vars, _ctx, mutation) => {
-      // Centralized mutation error reporting/logging (optional)
-      // console.error('Mutation error:', mutation.options.mutationKey, error);
+
     },
   }),
 });

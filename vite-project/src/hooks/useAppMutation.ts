@@ -1,4 +1,3 @@
-// src/hooks/useAppMutation.ts
 import { useMutation, useQueryClient } from '@tanstack/react-query';
 import type { UseMutationOptions } from '@tanstack/react-query';
 

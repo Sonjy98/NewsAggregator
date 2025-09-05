@@ -1,4 +1,3 @@
-// Models/UserPreference.cs
 using System.ComponentModel.DataAnnotations;
 
 namespace NewsFeedBackend.Models;

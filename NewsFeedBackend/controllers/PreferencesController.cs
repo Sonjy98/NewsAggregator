@@ -7,7 +7,7 @@ using System.Security.Claims;
 namespace NewsFeedBackend.Controllers;
 
 [ApiController]
-[Route("api/[controller]")] // -> /api/preferences
+[Route("api/[controller]")]
 [Authorize]
 public class PreferencesController(AppDbContext db) : ControllerBase
 {

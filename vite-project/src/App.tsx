@@ -17,8 +17,8 @@ export default function App() {
       <Header 
   title="My Epic News Feed" 
   onLogout={() => { 
-    logout();       // clear token/session
-    setUser(null as any);  // force App to render <Login/>
+    logout();
+    setUser(null as any);
   }} 
 />
       <main style={{ width: "min(1100px, 92vw)", margin: "24px auto" }}>

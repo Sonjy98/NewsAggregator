@@ -15,7 +15,6 @@ public class ExternalNewsController : ControllerBase
     private readonly AppDbContext _db;
     private readonly string _apiKey;
 
-    // defaults (configurable)
     private readonly string _defaultLanguage;
     private readonly string? _defaultQuery;
     private readonly string? _defaultCountry;
@@ -54,8 +53,6 @@ public class ExternalNewsController : ControllerBase
         return StatusCode((int)resp.StatusCode, body);
     }
 
-    // Public/default feed (uses defaults if none provided)
-    // GET /api/externalnews/newsdata[?q=...&language=...&country=...&category=...]
     [HttpGet("newsdata")]
     [AllowAnonymous]
     public Task<IActionResult> Raw(
@@ -65,7 +62,6 @@ public class ExternalNewsController : ControllerBase
         [FromQuery] string? category,
         CancellationToken ct = default)
     {
-        // If q not provided, use configured default query (or none) + default language/country/category
         var finalQ        = string.IsNullOrWhiteSpace(q) ? _defaultQuery : q;
         var finalLanguage = language ?? _defaultLanguage;
         var finalCountry  = country  ?? _defaultCountry;
@@ -74,7 +70,6 @@ public class ExternalNewsController : ControllerBase
         return ProxyAsync(BuildUrl(finalQ, finalLanguage, finalCountry, finalCategory), ct);
     }
 
-    // GET /api/externalnews/search?q=...&language=...
     [HttpGet("search")]
     [AllowAnonymous]
     public async Task<IActionResult> Search([FromQuery] string q, [FromQuery] string language = "en", CancellationToken ct = default)
@@ -83,8 +78,6 @@ public class ExternalNewsController : ControllerBase
         return await ProxyAsync(BuildUrl(q, language, null, null), ct);
     }
 
-    // GET /api/externalnews/for-me?language=en
-    // If user has no keywords → fall back to default feed (not empty!)
     [HttpGet("for-me")]
     [Authorize]
     public async Task<IActionResult> ForMe([FromQuery] string? language = null, CancellationToken ct = default)
@@ -99,7 +92,6 @@ public class ExternalNewsController : ControllerBase
 
         if (keywords.Count == 0)
         {
-            // server-side fallback to your default feed
             var urlDefault = BuildUrl(_defaultQuery, language ?? _defaultLanguage, _defaultCountry, _defaultCategory);
             return await ProxyAsync(urlDefault, ct);
         }
