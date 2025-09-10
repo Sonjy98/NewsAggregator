@@ -1,15 +1,18 @@
 import { useQueryClient, useQuery } from '@tanstack/react-query';
 import { useAppMutation } from './useAppMutation';
 import { PrefsApi } from '../lib/prefs';
+import { getToken } from '../lib/auth';
 
 type Ctx = { prev: string[] };
 
 export function useKeywords() {
   const qc = useQueryClient();
+  const token = getToken();
 
   const list = useQuery({
     queryKey: ['prefs', 'keywords'],
     queryFn: () => PrefsApi.list(),
+    enabled: !!token,
   });
 
   const add = useAppMutation<void, Error, string, Ctx>({

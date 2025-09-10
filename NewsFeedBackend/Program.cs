@@ -8,19 +8,20 @@ using NewsFeedBackend.Http;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---------- Logging (built-in only) ----------
+// ---------- Logging: slim + signal-only ----------
 builder.Logging.ClearProviders();
-builder.Logging.AddConsole();
-builder.Logging.AddDebug();
-builder.Logging.Configure(o =>
+builder.Logging.AddSimpleConsole(o =>
 {
-    o.ActivityTrackingOptions =
-        ActivityTrackingOptions.SpanId |
-        ActivityTrackingOptions.TraceId |
-        ActivityTrackingOptions.ParentId |
-        ActivityTrackingOptions.Tags |
-        ActivityTrackingOptions.Baggage;
+    o.TimestampFormat = "HH:mm:ss ";
+    o.SingleLine = true;
 });
+
+builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Error);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Routing.EndpointMiddleware", LogLevel.Error);
+builder.Logging.AddFilter("Microsoft.AspNetCore.Mvc.Infrastructure", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Error);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.newsdata", LogLevel.Error);
 
 // ---------- CORS ----------
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
@@ -32,7 +33,6 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
 builder.Services.AddControllers();
 
 // ---------- EF Core (MySQL) + slow-query interceptor ----------
-builder.Services.AddSingleton<SlowQueryInterceptor>();
 builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
 {
     var cs = builder.Configuration.GetConnectionString("Default");
@@ -41,7 +41,6 @@ builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
     if (builder.Environment.IsDevelopment())
         opt.EnableSensitiveDataLogging(); // dev-only: includes parameter values
 
-    opt.AddInterceptors(sp.GetRequiredService<SlowQueryInterceptor>());
 });
 
 // ---------- HttpClient (single named client; no duplicates) ----------

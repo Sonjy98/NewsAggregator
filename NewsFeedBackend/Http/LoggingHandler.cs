@@ -1,32 +1,43 @@
 using System.Diagnostics;
+using System.Text.RegularExpressions;
 using Microsoft.Extensions.Logging;
 
-namespace NewsFeedBackend.Http;
-
-public class LoggingHandler : DelegatingHandler
+namespace NewsFeedBackend.Http
 {
-    private readonly ILogger<LoggingHandler> _logger;
-    public LoggingHandler(ILogger<LoggingHandler> logger) => _logger = logger;
-
-    protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
+    public class LoggingHandler : DelegatingHandler
     {
-        var sw = Stopwatch.StartNew();
-        _logger.LogInformation("HTTP OUT → {Method} {Url}", req.Method, req.RequestUri);
+        private readonly ILogger<LoggingHandler> _logger;
+        public LoggingHandler(ILogger<LoggingHandler> logger) => _logger = logger;
 
-        try
+        // redact common secret-y query params
+        private static readonly Regex SecretQuery =
+            new("(apikey|api_key|token|key|password)=([^&]+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+        protected override async Task<HttpResponseMessage> SendAsync(HttpRequestMessage req, CancellationToken ct)
         {
-            var res = await base.SendAsync(req, ct);
-            sw.Stop();
-            _logger.LogInformation("HTTP OUT ← {Status} in {ElapsedMs} ms ({Method} {Url})",
-                (int)res.StatusCode, sw.ElapsedMilliseconds, req.Method, req.RequestUri);
+            var sw = Stopwatch.StartNew();
+            HttpResponseMessage res;
+            try
+            {
+                res = await base.SendAsync(req, ct);
+            }
+            finally
+            {
+                sw.Stop();
+            }
+
+            var url = req.RequestUri?.ToString() ?? "";
+            url = SecretQuery.Replace(url, m => $"{m.Groups[1].Value}=***");
+
+            var status = (int)res.StatusCode;
+            var level = status >= 500 ? LogLevel.Error
+                      : status >= 400 ? LogLevel.Warning
+                      : LogLevel.Information; // keep 2xx/3xx but short
+
+            _logger.Log(level, "HTTP OUT {Status} {Method} {Url} in {ElapsedMs}ms",
+                status, req.Method.Method, url, sw.ElapsedMilliseconds);
+
             return res;
-        }
-        catch (Exception ex)
-        {
-            sw.Stop();
-            _logger.LogError(ex, "HTTP OUT ✖ {Method} {Url} after {ElapsedMs} ms",
-                req.Method, req.RequestUri, sw.ElapsedMilliseconds);
-            throw;
         }
     }
 }
