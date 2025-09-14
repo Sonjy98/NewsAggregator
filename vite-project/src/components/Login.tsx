@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type SetStateAction } from "react";
 import s from "./auth.module.css";
 import { api } from "../lib/api";
 import { useAuth } from "../hooks/useAuth";
@@ -22,9 +22,9 @@ export default function Login(props: { onLoggedIn?: (u: { userId: string; email:
     const onSuccess = (u: { userId: string; email: string }) => props.onLoggedIn?.(u);
 
     if (mode === "login") {
-      login(vars, { onSuccess, onError: (e) => setErr(e.message) });
+      login(vars, { onSuccess, onError: (e: { message: SetStateAction<string>; }) => setErr(e.message) });
     } else {
-      register(vars, { onSuccess, onError: (e) => setErr(e.message) });
+      register(vars, { onSuccess, onError: (e: { message: SetStateAction<string>; }) => setErr(e.message) });
     }
   }
 

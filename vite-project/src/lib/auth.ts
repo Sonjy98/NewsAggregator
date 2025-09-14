@@ -37,3 +37,7 @@ export function logout() {
   localStorage.removeItem("auth_token");
   localStorage.removeItem("auth_user");
 }
+
+export function clearSession() {
+  localStorage.removeItem('auth'); // or however you store it
+}

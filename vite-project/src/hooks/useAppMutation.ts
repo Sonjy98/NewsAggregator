@@ -1,32 +1,36 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query';
-import type { UseMutationOptions } from '@tanstack/react-query';
+import { useMutation, useQueryClient, type UseMutationOptions, type UseMutationResult, type QueryKey } from '@tanstack/react-query';
 
+type Invalidate = { queryKey: QueryKey } | Array<{ queryKey: QueryKey }>;
 
-type Invalidate = { queryKey: unknown[] } | Array<{ queryKey: unknown[] }>;
+type MinimalMutation<TData, TError, TVariables> = {
+  mutate: UseMutationResult<TData, TError, TVariables>['mutate'];
+  isLoading: boolean;
+  error: TError | null;
+};
 
-export function useAppMutation<TData, TError = Error, TVars = void, TCtx = unknown>(
-  options: UseMutationOptions<TData, TError, TVars, TCtx> & { invalidate?: Invalidate }
-) {
+export function useAppMutation<
+  TData = unknown,
+  TError = Error,
+  TVariables = void,
+  TContext = unknown
+>(
+  opts: UseMutationOptions<TData, TError, TVariables, TContext> & { invalidate?: Invalidate }
+): MinimalMutation<TData, TError, TVariables> {
   const qc = useQueryClient();
-  const m = useMutation<TData, TError, TVars, TCtx>({
-    ...options,
-    onSuccess: (data, vars, ctx) => {
-      options.onSuccess?.(data, vars, ctx);
-      const inv = options.invalidate;
-      if (inv) {
-        const list = Array.isArray(inv) ? inv : [inv];
-        for (const it of list) qc.invalidateQueries({ queryKey: it.queryKey });
-      }
+  const { invalidate, onSuccess, ...rest } = opts;
+
+  const m = useMutation<TData, TError, TVariables, TContext>({
+    ...rest,
+    onSuccess: (data, variables, ctx) => {
+      onSuccess?.(data, variables, ctx);
+      const targets = Array.isArray(invalidate) ? invalidate : invalidate ? [invalidate] : [];
+      targets.forEach(t => qc.invalidateQueries(t));
     },
   });
 
   return {
     mutate: m.mutate,
     isLoading: m.isPending,
-    isError: m.isError,
-    error: m.error as TError | null,
-    isSuccess: m.isSuccess,
-    data: m.data as TData | undefined,
-    reset: m.reset,
+    error: (m.error as TError) ?? null,
   };
 }

@@ -22,7 +22,6 @@ public abstract class ApiControllerBase : ControllerBase
         using (Logger.BeginScope(new Dictionary<string, object?>
         {
             ["Operation"] = operation,
-            ["UserId"] = UserId ?? "anonymous",
             ["Path"] = HttpContext?.Request?.Path.Value,
             ["TraceId"] = HttpContext?.TraceIdentifier
         }))
