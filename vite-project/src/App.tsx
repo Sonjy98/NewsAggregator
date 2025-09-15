@@ -7,7 +7,7 @@ import Header from "./components/Header";
 import "./App.css";
 
 export default function App() {
-  const [user, setUser] = useState(getUser());
+  const [_user, setUser] = useState(getUser());
   const token = getToken();
 
   if (!token) return <Login onLoggedIn={u => setUser(u)} />;

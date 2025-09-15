@@ -14,12 +14,12 @@ export const queryClient = new QueryClient({
     mutations: { retry: 0 },
   },
   queryCache: new QueryCache({
-    onError: (error, query) => {
+    onError: (_error, _query) => {
 
     },
   }),
   mutationCache: new MutationCache({
-    onError: (error, _vars, _ctx, mutation) => {
+    onError: (_error, _vars, _ctx, _mutation) => {
 
     },
   }),
