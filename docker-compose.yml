@@ -1,0 +1,58 @@
+services:
+  db:
+    image: mysql:8.4
+    container_name: newsfeed-mysql
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: newsfeed
+      MYSQL_USER: newsuser
+      MYSQL_PASSWORD: ${MYSQL_PASSWORD}
+      MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
+    volumes:
+      - mysql_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u${MYSQL_USER} -p${MYSQL_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
+
+  api:
+    image: sonjy98/newsfeed-backend:latest
+    container_name: newsfeed-api
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
+    environment:
+      ASPNETCORE_URLS: http://0.0.0.0:8080
+      ConnectionStrings__Default: Server=db;Port=3306;Database=newsfeed;User Id=newsuser;Password=${MYSQL_PASSWORD};AllowPublicKeyRetrieval=True;SslMode=Preferred
+      Jwt__Key: ${JWT_KEY}
+      Jwt__Issuer: NewsFeedBackend
+      Jwt__Audience: NewsFeedFrontend
+      NewsData__ApiKey: ${NEWSDATA_API_KEY}
+      NewsData__DefaultLanguage: en
+      NewsData__DefaultCountry: US
+      NewsData__DefaultCategory: ""
+      NewsData__DefaultQuery: ""
+      Smtp__Host: ${SMTP_HOST}
+      Smtp__Port: ${SMTP_PORT}
+      Smtp__Secure: ${SMTP_SECURE}
+      Smtp__User: ${SMTP_USER}
+      Smtp__Password: ${SMTP_PASSWORD}
+      Smtp__FromEmail: ${SMTP_FROM}
+      Smtp__FromName: "My Epic News"
+    expose:
+      - "8080"
+
+  frontend:
+    image: sonjy98/newsfeed-frontend:latest
+    container_name: newsfeed-frontend
+    depends_on:
+      api:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - "80:80"
+
+volumes:
+  mysql_data:
