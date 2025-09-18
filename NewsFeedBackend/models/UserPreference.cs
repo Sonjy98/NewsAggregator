@@ -1,11 +1,10 @@
-// Models/UserPreference.cs
 using System.ComponentModel.DataAnnotations;
 
 namespace NewsFeedBackend.Models;
 
 public class UserPreference
 {
-    public int UserId { get; set; }
+    public Guid UserId { get; set; }
     public User User { get; set; } = null!;
 
     [MaxLength(128)]

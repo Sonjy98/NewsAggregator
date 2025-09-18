@@ -1,25 +1,28 @@
 services:
   db:
-    image: mysql:8.0
+    image: mysql:8.4
+    container_name: newsfeed-mysql
+    restart: unless-stopped
     environment:
       MYSQL_DATABASE: newsfeed
       MYSQL_USER: newsuser
       MYSQL_PASSWORD: ${MYSQL_PASSWORD}
       MYSQL_ROOT_PASSWORD: ${MYSQL_ROOT_PASSWORD}
-    ports:
-      - "3307:3306"
     volumes:
       - mysql_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
-      interval: 5s
-      timeout: 3s
-      retries: 30
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -u${MYSQL_USER} -p${MYSQL_PASSWORD} --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 20
 
   api:
-    build:
-      context: ./NewsFeedBackend
-      dockerfile: Dockerfile
+    image: sonjy98/newsfeed-backend:latest
+    container_name: newsfeed-api
+    depends_on:
+      db:
+        condition: service_healthy
+    restart: unless-stopped
     environment:
       ASPNETCORE_URLS: http://0.0.0.0:8080
       ConnectionStrings__Default: Server=db;Port=3306;Database=newsfeed;User Id=newsuser;Password=${MYSQL_PASSWORD};AllowPublicKeyRetrieval=True;SslMode=Preferred
@@ -28,7 +31,7 @@ services:
       Jwt__Audience: NewsFeedFrontend
       NewsData__ApiKey: ${NEWSDATA_API_KEY}
       NewsData__DefaultLanguage: en
-      NewsData__DefaultCountry: "US"
+      NewsData__DefaultCountry: US
       NewsData__DefaultCategory: ""
       NewsData__DefaultQuery: ""
       Smtp__Host: ${SMTP_HOST}
@@ -38,24 +41,18 @@ services:
       Smtp__Password: ${SMTP_PASSWORD}
       Smtp__FromEmail: ${SMTP_FROM}
       Smtp__FromName: "My Epic News"
-    depends_on:
-      db:
-        condition: service_healthy
-    ports:
-      - "5001:8080"
+    expose:
+      - "8080"
 
   frontend:
-    image: node:20-alpine
-    working_dir: /app
-    command: sh -c "if [ -f package-lock.json ]; then npm ci; else npm install; fi && npm run dev -- --host"
-    volumes:
-      - ./vite-project:/app
-    environment:
-      VITE_API_BASE: http://localhost:5001
-    ports:
-      - "5173:5173"
+    image: sonjy98/newsfeed-frontend:latest
+    container_name: newsfeed-frontend
     depends_on:
-      - api
+      api:
+        condition: service_started
+    restart: unless-stopped
+    ports:
+      - "80:80"
 
 volumes:
   mysql_data:

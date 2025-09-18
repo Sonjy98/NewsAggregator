@@ -1,25 +1,20 @@
-import { API_BASE, getToken } from "./auth";
+import { api } from "./api"
+import { getToken } from "./auth"
 
 export async function sendDigest(max = 10) {
-  const token = getToken();
-  if (!token) throw new Error("Please log in first.");
+  const token = getToken()
+  if (!token) throw new Error("Please log in first.")
 
-  const res = await fetch(`${API_BASE}/api/email/send?max=${max}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
-  });
-
-  const text = await res.text();
-  if (!res.ok) {
-    // try to extract a useful message if JSON ProblemDetails
-    try {
-      const j = JSON.parse(text);
-      throw new Error(j?.detail || j?.title || j?.message || `HTTP ${res.status}`);
-    } catch {
-      throw new Error(text || `HTTP ${res.status}`);
+  try {
+    const res = await api.post(`/email/send?max=${max}`)
+    return res.data
+  } catch (err: any) {
+    if (err.response?.data) {
+      const j = err.response.data
+      throw new Error(
+        j?.detail || j?.title || j?.message || `HTTP ${err.response.status}`
+      )
     }
+    throw err instanceof Error ? err : new Error("Request failed")
   }
-
-  // ok → parse JSON if any
-  return text ? JSON.parse(text) : {};
 }

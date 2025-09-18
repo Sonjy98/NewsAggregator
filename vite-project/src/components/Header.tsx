@@ -1,33 +1,26 @@
-import { useState } from "react";
 import s from "./header.module.css";
-import { logout, getUserEmail } from "../lib/auth";
-import { sendDigest } from "../lib/email";
+import { useSendDigest } from "../hooks/useSendDigest";
+import { useAuth } from "../hooks/useAuth";
+import { toast, type Renderable, type Toast, type ValueFunction } from "react-hot-toast";
 
-type Props = { title?: string };
+type Props = { title?: string; onLogout?: () => void };
 
-export default function Header({ title = "My Epic News Feed" }: Props) {
-  const email = getUserEmail() ?? "";
-  const [sending, setSending] = useState(false);
-  const [msg, setMsg] = useState<string>("");
+export default function Header({ title = "My Epic News Feed", onLogout }: Props) {
+  const { userEmail, logout } = useAuth();
+  const { sendDigest, sending } = useSendDigest();
 
-  async function onEmailMe() {
-    try {
-      setSending(true);
-      setMsg("");
-      const res = await sendDigest(10);
-      const to = (res?.sentTo ?? email) || "your inbox";
-      setMsg(`Sent to ${to}`);
-    } catch (e) {
-      setMsg(e instanceof Error ? e.message : "Failed to send email");
-    } finally {
-      setSending(false);
-      setTimeout(() => setMsg(""), 3500);
-    }
+  function onEmailMe() {
+    const to = userEmail ?? "your inbox";
+    sendDigest(10, {
+      onSuccess: () => toast.success(`Digest sent to ${to}`),
+      onError: (e: { message: Renderable | ValueFunction<Renderable, Toast>; }) =>
+        toast.error(e instanceof Error ? e.message : "Failed to send email"),
+    });
   }
 
-  function onLogout() {
+  function handleLogout() {
     logout();
-    location.reload();
+    onLogout?.();
   }
 
   return (
@@ -37,16 +30,24 @@ export default function Header({ title = "My Epic News Feed" }: Props) {
           <div className={s.brand}>{title}</div>
           <div className={s.spacer} />
           <div className={s.userArea}>
-            {email && <span className={s.email} title={email}>{email}</span>}
-            <button className={`${s.btn} ${s.primary}`} onClick={onEmailMe} disabled={sending}>
+            {userEmail && (
+              <span className={s.email} title={userEmail}>
+                {userEmail}
+              </span>
+            )}
+            <button
+              className={`${s.btn} ${s.primary}`}
+              onClick={onEmailMe}
+              disabled={sending}
+            >
               {sending ? "Sending…" : "Email me"}
             </button>
-            <button className={`${s.btn} ${s.ghost}`} onClick={onLogout}>Log out</button>
+            <button className={`${s.btn} ${s.ghost}`} onClick={handleLogout}>
+              Log out
+            </button>
           </div>
         </div>
       </div>
-
-      {msg && <div className={s.toast}>{msg}</div>}
     </header>
   );
 }

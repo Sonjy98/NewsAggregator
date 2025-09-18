@@ -1,0 +1,82 @@
+import axios from "axios";
+import { getToken, logout } from "./auth";
+
+export const api = axios.create({
+  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:5001",
+});
+
+
+api.interceptors.request.use((config) => {
+  // JWT
+  const t = getToken();
+  if (t) {
+    config.headers = config.headers ?? {};
+    config.headers.Authorization = `Bearer ${t}`;
+  } else if (config?.headers?.Authorization) {
+    delete (config.headers as any).Authorization;
+  }
+
+  let url = config.url ?? "";
+  if (!/^https?:\/\//i.test(url)) {
+    if (!url.startsWith("/")) url = "/" + url;
+    if (!url.startsWith("/api/")) url = "/api" + url;
+    config.url = url;
+  }
+
+  return config;
+});
+
+api.interceptors.response.use(
+  (res) => {
+    if (import.meta.env.DEV) {
+      const t0 = (res.config as any).__t0 ?? performance.now();
+      const ms = (performance.now() - t0).toFixed(1);
+      const method = (res.config.method || "GET").toUpperCase();
+      const url = res.config.url || "";
+      const reqId = res.headers["x-request-id"];
+      console.groupCollapsed(
+        `✅ ${res.status} ${method} ${url} (${ms} ms)` + (reqId ? `  #${reqId}` : "")
+      );
+      console.debug("request", {
+        url,
+        params: res.config.params,
+        data: res.config.data,
+      });
+      console.debug("response", {
+        status: res.status,
+        data: res.data,
+        requestId: reqId,
+      });
+      console.groupEnd();
+    }
+    return res;
+  },
+  (err) => {
+    if (import.meta.env.DEV) {
+      const cfg = err.config || {};
+      const t0 = (cfg as any).__t0 ?? performance.now();
+      const ms = (performance.now() - t0).toFixed(1);
+      const method = (cfg.method || "GET").toUpperCase();
+      const url = cfg.url || "";
+      const status = err.response?.status ?? "ERR";
+      const reqId =
+        err.response?.headers?.["x-request-id"] ??
+        err.response?.data?.traceId ??
+        err.response?.data?.trace_id;
+      console.groupCollapsed(
+        `❌ ${status} ${method} ${url} (${ms} ms)` + (reqId ? `  #${reqId}` : "")
+      );
+      console.warn("request", { url, params: cfg.params, data: cfg.data });
+      console.error("error", {
+        status: err.response?.status,
+        data: err.response?.data,
+        requestId: reqId,
+      });
+      console.groupEnd();
+    }
+    if (err?.response?.status === 401) {
+      logout();
+    }
+    return Promise.reject(err);
+  }
+);

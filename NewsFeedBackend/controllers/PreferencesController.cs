@@ -7,14 +7,14 @@ using System.Security.Claims;
 namespace NewsFeedBackend.Controllers;
 
 [ApiController]
-[Route("api/[controller]")] // -> /api/preferences
+[Route("api/[controller]")]
 [Authorize]
 public class PreferencesController(AppDbContext db) : ControllerBase
 {
-    private int GetUserId()
+    private Guid  GetUserId()
     {
         var id = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-        if (!int.TryParse(id, out var userId)) throw new InvalidOperationException("Bad user id in token.");
+        if (!Guid .TryParse(id, out var userId)) throw new InvalidOperationException("Bad user id in token.");
         return userId;
     }
 

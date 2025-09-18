@@ -1,22 +1,14 @@
 import type { AuthResponse, LoginRequest, RegisterRequest } from "../types/auth";
-
-export const API_BASE = import.meta.env.VITE_API_BASE;
-
-async function apiPost<TReq, TRes>(path: string, body: TReq): Promise<TRes> {
-  const res = await fetch(`${API_BASE}${path}`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  if (!res.ok) throw new Error(text || "Request failed");
-  return text ? (JSON.parse(text) as TRes) : ({} as TRes);
-}
+import { api } from "./api"
 
 export const AuthApi = {
-  login:    (req: LoginRequest)    => apiPost<LoginRequest,    AuthResponse>("/api/auth/login", req),
-  register: (req: RegisterRequest) => apiPost<RegisterRequest, AuthResponse>("/api/auth/register", req),
-};
+  login(req: LoginRequest): Promise<AuthResponse> {
+    return api.post("/api/auth/login", req).then(r => r.data)
+  },
+  register(req: RegisterRequest): Promise<AuthResponse> {
+    return api.post("/api/auth/register", req).then(r => r.data)
+  },
+}
 
 export function saveSession(data: AuthResponse) {
   localStorage.setItem("auth_token", data.token);
@@ -25,7 +17,7 @@ export function saveSession(data: AuthResponse) {
 export function getToken() { return localStorage.getItem("auth_token"); }
 export function getUser()  {
   const raw = localStorage.getItem("auth_user");
-  return raw ? (JSON.parse(raw) as { userId: number; email: string }) : null;
+  return raw ? (JSON.parse(raw) as { userId: string; email: string }) : null;
 }
 
 export function getUserEmail(): string | null {
@@ -44,4 +36,8 @@ export function getUserEmail(): string | null {
 export function logout() {
   localStorage.removeItem("auth_token");
   localStorage.removeItem("auth_user");
+}
+
+export function clearSession() {
+  localStorage.removeItem('auth'); // or however you store it
 }

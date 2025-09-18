@@ -24,11 +24,8 @@ namespace NewsFeedBackend.Migrations
 
             modelBuilder.Entity("NewsFeedBackend.Models.User", b =>
                 {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("int");
-
-                    MySqlPropertyBuilderExtensions.UseMySqlIdentityColumn(b.Property<int>("Id"));
+                    b.Property<Guid>("Id")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("Email")
                         .IsRequired()
@@ -53,8 +50,8 @@ namespace NewsFeedBackend.Migrations
 
             modelBuilder.Entity("NewsFeedBackend.Models.UserPreference", b =>
                 {
-                    b.Property<int>("UserId")
-                        .HasColumnType("int");
+                    b.Property<Guid>("UserId")
+                        .HasColumnType("char(36)");
 
                     b.Property<string>("Keyword")
                         .HasMaxLength(128)

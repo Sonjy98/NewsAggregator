@@ -25,7 +25,7 @@ public class EmailController(AppDbContext db, IHttpClientFactory httpFactory, IC
     public async Task<IActionResult> Send([FromQuery] int max = 10, [FromQuery] string? language = null, CancellationToken ct = default)
     {
         var idStr = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-        if (!int.TryParse(idStr, out var userId)) return Unauthorized("Bad user id.");
+        if (!Guid.TryParse(idStr, out var userId)) return Unauthorized("Bad user id.");
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct);
         if (user is null) return Unauthorized("User not found.");
