@@ -99,6 +99,7 @@ jobs:
           INSTANCE: ${{ env.GCE_INSTANCE }}
           ZONE: ${{ env.GCE_ZONE }}
           USERNAME: ${{ steps.oslogin_key.outputs.username }}
+          APP_DIR: /home/youdnevergrazz/apps/newsfeed
         run: |
           set -euo pipefail
           gcloud compute ssh "${USERNAME}@${INSTANCE}" \
@@ -106,7 +107,10 @@ jobs:
             --ssh-key-file ./oslogin_key \
             --command '
               set -e
-              cd ~/apps/newsfeed
+              if [ ! -d '${APP_DIR}' ]; then
+                echo 'ERROR: ${APP_DIR} not found'; ls -la /home; exit 1
+              fi
+              cd '${APP_DIR}'
               sudo docker compose pull
               sudo docker compose up -d
               sudo docker image prune -f
