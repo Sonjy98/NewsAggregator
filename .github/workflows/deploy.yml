@@ -59,27 +59,44 @@ jobs:
   deploy:
     needs: build-and-push
     runs-on: ubuntu-latest
-    env:
-      VM_HOST: ${{ secrets.VM_HOST }}
-      VM_USER: ${{ secrets.VM_USER }}
-      VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
+    permissions:
+      contents: read
+      id-token: write
     steps:
-      - name: Add VM to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
-
-      - name: Deploy to VM
-        uses: appleboy/ssh-action@v1.2.0
+      - name: Authenticate to Google Cloud (Service Account JSON)
+        uses: google-github-actions/auth@v2
         with:
-          host: ${{ env.VM_HOST }}
-          username: ${{ env.VM_USER }}
-          key: ${{ env.VM_SSH_KEY }}
-   
-          script: |
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Install gcloud
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ secrets.GCP_PROJECT }}
+
+      - name: Get OS Login username
+        id: oslogin
+        if: ${{ !secrets.OS_LOGIN_USERNAME }}
+        run: |
+          set -e
+          USERNAME=$(gcloud compute os-login describe-profile --format='value(posixAccounts[0].username)')
+          if [ -z "$USERNAME" ]; then
+            echo "ERROR: No OS Login POSIX account found. Check roles and enable-oslogin." >&2
+            exit 1
+          fi
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
+
+      - name: Deploy via gcloud compute ssh (OS Login)
+        env:
+          INSTANCE: ${{ secrets.GCE_INSTANCE }}
+          ZONE: ${{ secrets.GCE_ZONE }}
+          USERNAME: ${{ secrets.OS_LOGIN_USERNAME || steps.oslogin.outputs.username }}
+        run: |
+          set -euo pipefail
+          gcloud compute ssh "${USERNAME}@${INSTANCE}" --zone "${ZONE}" --command '
             set -e
             cd ~/apps/newsfeed
             sudo docker compose pull
             sudo docker compose up -d
             sudo docker image prune -f
             curl -fsS http://localhost/ >/dev/null
+          '
