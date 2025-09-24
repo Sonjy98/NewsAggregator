@@ -62,6 +62,11 @@ jobs:
     permissions:
       contents: read
       id-token: write
+    env:
+      GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+      GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+      GCE_ZONE: ${{ secrets.GCE_ZONE }}
+      OS_LOGIN_USERNAME: ${{ secrets.OS_LOGIN_USERNAME }} # may be empty
     steps:
       - name: Authenticate to Google Cloud (Service Account JSON)
         uses: google-github-actions/auth@v2
@@ -71,25 +76,28 @@ jobs:
       - name: Install gcloud
         uses: google-github-actions/setup-gcloud@v2
         with:
-          project_id: ${{ secrets.GCP_PROJECT }}
+          project_id: ${{ env.GCP_PROJECT }}
 
-      - name: Get OS Login username
+      - name: Resolve OS Login username (secret or auto-discover)
         id: oslogin
-        if: ${{ !secrets.OS_LOGIN_USERNAME }}
         run: |
           set -e
-          USERNAME=$(gcloud compute os-login describe-profile --format='value(posixAccounts[0].username)')
-          if [ -z "$USERNAME" ]; then
-            echo "ERROR: No OS Login POSIX account found. Check roles and enable-oslogin." >&2
-            exit 1
+          if [ -n "${OS_LOGIN_USERNAME}" ]; then
+            echo "username=${OS_LOGIN_USERNAME}" >> "$GITHUB_OUTPUT"
+          else
+            USERNAME=$(gcloud compute os-login describe-profile --format='value(posixAccounts[0].username)')
+            if [ -z "$USERNAME" ]; then
+              echo "ERROR: No OS Login POSIX account found. Check roles and enable-oslogin." >&2
+              exit 1
+            fi
+            echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
           fi
-          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via gcloud compute ssh (OS Login)
         env:
-          INSTANCE: ${{ secrets.GCE_INSTANCE }}
-          ZONE: ${{ secrets.GCE_ZONE }}
-          USERNAME: ${{ secrets.OS_LOGIN_USERNAME || steps.oslogin.outputs.username }}
+          INSTANCE: ${{ env.GCE_INSTANCE }}
+          ZONE: ${{ env.GCE_ZONE }}
+          USERNAME: ${{ steps.oslogin.outputs.username }}
         run: |
           set -euo pipefail
           gcloud compute ssh "${USERNAME}@${INSTANCE}" --zone "${ZONE}" --command '
