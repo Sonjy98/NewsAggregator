@@ -105,17 +105,7 @@ jobs:
           gcloud compute ssh "${USERNAME}@${INSTANCE}" \
             --zone "${ZONE}" \
             --ssh-key-file ./oslogin_key \
-            --command '
-              set -e
-              if [ ! -d '${APP_DIR}' ]; then
-                echo 'ERROR: ${APP_DIR} not found'; ls -la /home; exit 1
-              fi
-              cd '${APP_DIR}'
-              sudo docker compose pull
-              sudo docker compose up -d
-              sudo docker image prune -f
-              curl -fsS http://localhost/ >/dev/null
-            '
+            --command "set -e; APP_DIR=/home/youdnevergrazz/apps/newsfeed; if [ ! -d \"\$APP_DIR\" ]; then echo \"ERROR: \$APP_DIR not found\"; ls -la /home; exit 1; fi; cd \"\$APP_DIR\"; sudo docker compose pull; sudo docker compose up -d; sudo docker image prune -f; curl -fsS http://localhost/ >/dev/null"
 
       - name: Cleanup OS Login key
         if: always()
