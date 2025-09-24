@@ -66,7 +66,7 @@ jobs:
       GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
       GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
       GCE_ZONE: ${{ secrets.GCE_ZONE }}
-      OS_LOGIN_USERNAME: ${{ secrets.OS_LOGIN_USERNAME }} # may be empty
+      OS_LOGIN_USERNAME: ${{ secrets.OS_LOGIN_USERNAME }}
     steps:
       - name: Authenticate to Google Cloud (Service Account JSON)
         uses: google-github-actions/auth@v2
@@ -78,33 +78,47 @@ jobs:
         with:
           project_id: ${{ env.GCP_PROJECT }}
 
-      - name: Resolve OS Login username (secret or auto-discover)
-        id: oslogin
+      - name: Create short-lived OS Login key
+        id: oslogin_key
         run: |
-          set -e
-          if [ -n "${OS_LOGIN_USERNAME}" ]; then
-            echo "username=${OS_LOGIN_USERNAME}" >> "$GITHUB_OUTPUT"
-          else
+          set -euo pipefail
+          ssh-keygen -t ed25519 -N "" -f ./oslogin_key -C "gha@$(date -u +%FT%TZ)"
+          gcloud compute os-login ssh-keys add --key-file=./oslogin_key.pub --ttl=30m
+          USERNAME="${OS_LOGIN_USERNAME}"
+          if [ -z "$USERNAME" ]; then
             USERNAME=$(gcloud compute os-login describe-profile --format='value(posixAccounts[0].username)')
-            if [ -z "$USERNAME" ]; then
-              echo "ERROR: No OS Login POSIX account found. Check roles and enable-oslogin." >&2
-              exit 1
-            fi
-            echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
           fi
+          if [ -z "$USERNAME" ]; then
+            echo "ERROR: No OS Login POSIX account found. Ensure roles and enable-oslogin." >&2
+            exit 1
+          fi
+          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
 
       - name: Deploy via gcloud compute ssh (OS Login)
         env:
           INSTANCE: ${{ env.GCE_INSTANCE }}
           ZONE: ${{ env.GCE_ZONE }}
-          USERNAME: ${{ steps.oslogin.outputs.username }}
+          USERNAME: ${{ steps.oslogin_key.outputs.username }}
         run: |
           set -euo pipefail
-          gcloud compute ssh "${USERNAME}@${INSTANCE}" --zone "${ZONE}" --command '
-            set -e
-            cd ~/apps/newsfeed
-            sudo docker compose pull
-            sudo docker compose up -d
-            sudo docker image prune -f
-            curl -fsS http://localhost/ >/dev/null
-          '
+          gcloud compute ssh "${USERNAME}@${INSTANCE}" \
+            --zone "${ZONE}" \
+            --ssh-key-file ./oslogin_key \
+            --command '
+              set -e
+              cd ~/apps/newsfeed
+              sudo docker compose pull
+              sudo docker compose up -d
+              sudo docker image prune -f
+              curl -fsS http://localhost/ >/dev/null
+            '
+
+      - name: Cleanup OS Login key
+        if: always()
+        run: |
+          set -euo pipefail
+          if [ -f ./oslogin_key.pub ]; then
+            PUB="$(cat ./oslogin_key.pub)"
+            gcloud compute os-login ssh-keys remove --key "$PUB" || true
+            rm -f ./oslogin_key ./oslogin_key.pub
+          fi
