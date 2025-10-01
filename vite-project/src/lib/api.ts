@@ -19,7 +19,6 @@ api.interceptors.request.use((config) => {
   let url = config.url ?? "";
   if (!/^https?:\/\//i.test(url)) {
     if (!url.startsWith("/")) url = "/" + url;
-    if (!url.startsWith("/api/")) url = "/api" + url;
     config.url = url;
   }
 
