@@ -1,10 +1,13 @@
 import axios from "axios";
 import { getToken, logout } from "./auth";
 
-export const api = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE || "http://localhost:5001",
-});
+const rawBase = (import.meta.env.VITE_API_BASE ?? "/api").trim();
+const baseURL = rawBase.replace(/\/+$/, "");
 
+export const api = axios.create({
+  baseURL,
+  withCredentials: true,
+});
 
 api.interceptors.request.use((config) => {
   // JWT
@@ -16,10 +19,12 @@ api.interceptors.request.use((config) => {
     delete (config.headers as any).Authorization;
   }
 
-  let url = config.url ?? "";
-  if (!/^https?:\/\//i.test(url)) {
-    if (!url.startsWith("/")) url = "/" + url;
-    config.url = url;
+  (config as any).__t0 = performance.now();
+
+  if (import.meta.env.DEV && typeof config.url === "string" && config.url.startsWith("/api/")) {
+    console.warn(
+      `[api] Avoid passing URLs starting with "/api". Use relative paths like "/auth/login". Got: ${config.url}`
+    );
   }
 
   return config;
