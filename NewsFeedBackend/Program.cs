@@ -26,6 +26,9 @@ builder.Services.AddSingleton<IChatCompletionService>(
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
     _ => new GoogleAIEmbeddingGenerator(embModel, googleKey));
 #pragma warning restore SKEXP0070
+builder.Services.AddSingleton<NewsFeedBackend.Services.NewsFilterExtractor>();
+builder.Services.AddSingleton<NewsFeedBackend.Services.SemanticReranker>();
+
 
 // ---------- Logging: slim + signal-only ----------
 builder.Logging.ClearProviders();
