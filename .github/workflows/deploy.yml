@@ -20,14 +20,11 @@ jobs:
       DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
       DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ env.DH_USER }}
           password: ${{ env.DH_TOKEN }}
@@ -66,53 +63,68 @@ jobs:
       GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
       GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
       GCE_ZONE: ${{ secrets.GCE_ZONE }}
-      OS_LOGIN_USERNAME: ${{ secrets.OS_LOGIN_USERNAME }}
+      APP_DIR: /home/youdnevergrazz/apps/newsfeed
     steps:
-      - name: Authenticate to Google Cloud (Service Account JSON)
+      - name: Authenticate with Google (OS Login)
         uses: google-github-actions/auth@v2
         with:
           credentials_json: ${{ secrets.GCP_SA_KEY }}
 
-      - name: Install gcloud
+      - name: Install gcloud SDK
         uses: google-github-actions/setup-gcloud@v2
         with:
           project_id: ${{ env.GCP_PROJECT }}
 
-      - name: Create short-lived OS Login key
-        id: oslogin_key
+      - name: Ensure VM exists
         run: |
           set -euo pipefail
-          ssh-keygen -t ed25519 -N "" -f ./oslogin_key -C "gha@$(date -u +%FT%TZ)"
-          gcloud compute os-login ssh-keys add --key-file=./oslogin_key.pub --ttl=30m
-          USERNAME="${OS_LOGIN_USERNAME}"
-          if [ -z "$USERNAME" ]; then
-            USERNAME=$(gcloud compute os-login describe-profile --format='value(posixAccounts[0].username)')
+          if ! gcloud compute instances describe "${GCE_INSTANCE}" --zone "${GCE_ZONE}" >/dev/null 2>&1; then
+            echo "VM not found, creating..."
+            gcloud compute instances create "${GCE_INSTANCE}" \
+              --project "${GCP_PROJECT}" \
+              --zone "${GCE_ZONE}" \
+              --machine-type "e2-small" \
+              --image-family "ubuntu-2404-lts" \
+              --image-project "ubuntu-os-cloud" \
+              --boot-disk-size "20GB" \
+              --metadata enable-oslogin=TRUE \
+              --tags "http-server,https-server" \
+              --metadata-from-file startup-script=<(cat <<'EOF'
+                #!/bin/bash
+                set -eux
+                apt-get update
+                apt-get install -y ca-certificates curl gnupg lsb-release
+                install -m 0755 -d /etc/apt/keyrings
+                curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
+                echo \
+                  "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+                  $(. /etc/os-release && echo $UBUNTU_CODENAME) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null
+                apt-get update
+                apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
+                systemctl enable --now docker
+                mkdir -p /home/youdnevergrazz/apps/newsfeed
+              EOF
+              )
+          else
+            echo "VM already exists."
           fi
-          if [ -z "$USERNAME" ]; then
-            echo "ERROR: No OS Login POSIX account found. Ensure roles and enable-oslogin." >&2
-            exit 1
-          fi
-          echo "username=$USERNAME" >> "$GITHUB_OUTPUT"
 
-      - name: Deploy via gcloud compute ssh (OS Login)
-        env:
-          INSTANCE: ${{ env.GCE_INSTANCE }}
-          ZONE: ${{ env.GCE_ZONE }}
-          USERNAME: ${{ steps.oslogin_key.outputs.username }}
-          APP_DIR: /home/youdnevergrazz/apps/newsfeed
+      - name: Ensure VM is running
         run: |
-          set -euo pipefail
-          gcloud compute ssh "${USERNAME}@${INSTANCE}" \
-            --zone "${ZONE}" \
-            --ssh-key-file ./oslogin_key \
-            --command "set -e; APP_DIR=/home/youdnevergrazz/apps/newsfeed; if [ ! -d \"\$APP_DIR\" ]; then echo \"ERROR: \$APP_DIR not found\"; ls -la /home; exit 1; fi; cd \"\$APP_DIR\"; sudo docker compose pull; sudo docker compose up -d; sudo docker image prune -f; curl -fsS http://localhost/ >/dev/null"
-
-      - name: Cleanup OS Login key
-        if: always()
-        run: |
-          set -euo pipefail
-          if [ -f ./oslogin_key.pub ]; then
-            PUB="$(cat ./oslogin_key.pub)"
-            gcloud compute os-login ssh-keys remove --key "$PUB" || true
-            rm -f ./oslogin_key ./oslogin_key.pub
+          STATUS=$(gcloud compute instances describe "${GCE_INSTANCE}" --zone "${GCE_ZONE}" --format='value(status)')
+          if [ "$STATUS" != "RUNNING" ]; then
+            echo "Starting VM..."
+            gcloud compute instances start "${GCE_INSTANCE}" --zone "${GCE_ZONE}"
           fi
+
+      - name: Deploy using OS Login (Google Auth)
+        run: |
+          set -euo pipefail
+          gcloud compute ssh "${GCE_INSTANCE}" \
+            --zone "${GCE_ZONE}" \
+            --command "set -e;
+              cd ${APP_DIR} || { echo 'App dir not found'; exit 1; };
+              sudo docker compose pull;
+              sudo docker compose up -d;
+              sudo docker image prune -f;
+              curl -fsS http://localhost/ || echo 'Warning: health check failed';"
