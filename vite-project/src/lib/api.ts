@@ -3,6 +3,7 @@ import { getToken, logout } from "./auth";
 
 const rawBase = (import.meta.env.VITE_API_BASE ?? "/api").trim();
 const baseURL = rawBase.replace(/\/+$/, "");
+console.log(baseURL);
 
 export const api = axios.create({
   baseURL,
