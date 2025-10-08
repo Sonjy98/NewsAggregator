@@ -82,21 +82,20 @@ jobs:
           if ! gcloud compute instances describe "${GCE_INSTANCE}" --zone "${GCE_ZONE}" >/dev/null 2>&1; then
             echo "VM not found, creating..."
 
-            # Write startup script to a file
-            cat > startup.sh <<'EOF'
-            #!/bin/bash
-            set -eux
-            apt-get update
-            apt-get install -y ca-certificates curl gnupg lsb-release
-            install -m 0755 -d /etc/apt/keyrings
-            curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg
-            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) stable" \
-              | tee /etc/apt/sources.list.d/docker.list > /dev/null
-            apt-get update
-            apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin
-            systemctl enable --now docker
-            mkdir -p /home/youdnevergrazz/apps/newsfeed
-            EOF
+            # Write startup script without heredoc (avoids EOF indentation issues)
+            STARTUP=startup.sh
+            : > "$STARTUP"
+            printf '%s\n' '#!/bin/bash' >> "$STARTUP"
+            printf '%s\n' 'set -eux' >> "$STARTUP"
+            printf '%s\n' 'apt-get update' >> "$STARTUP"
+            printf '%s\n' 'apt-get install -y ca-certificates curl gnupg lsb-release' >> "$STARTUP"
+            printf '%s\n' 'install -m 0755 -d /etc/apt/keyrings' >> "$STARTUP"
+            printf '%s\n' 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg' >> "$STARTUP"
+            printf '%s\n' 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null' >> "$STARTUP"
+            printf '%s\n' 'apt-get update' >> "$STARTUP"
+            printf '%s\n' 'apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin' >> "$STARTUP"
+            printf '%s\n' 'systemctl enable --now docker' >> "$STARTUP"
+            printf '%s\n' 'mkdir -p /home/youdnevergrazz/apps/newsfeed' >> "$STARTUP"
 
             gcloud compute instances create "${GCE_INSTANCE}" \
               --project "${GCP_PROJECT}" \
@@ -107,7 +106,7 @@ jobs:
               --boot-disk-size "20GB" \
               --metadata enable-oslogin=TRUE \
               --tags "http-server,https-server" \
-              --metadata-from-file startup-script=startup.sh
+              --metadata-from-file startup-script="$STARTUP"
           else
             echo "VM already exists."
           fi
