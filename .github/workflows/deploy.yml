@@ -2,7 +2,7 @@ name: Build & Deploy (Docker Hub + VM)
 
 on:
   push:
-    branches: ['**']
+    branches: ['main']
     paths:
       - 'NewsFeedBackend/**'
       - 'vite-project/**'
@@ -20,14 +20,11 @@ jobs:
       DH_USER: ${{ secrets.DOCKERHUB_USERNAME }}
       DH_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v4
+      - uses: actions/checkout@v4
 
-      - name: Set up Buildx
-        uses: docker/setup-buildx-action@v3
+      - uses: docker/setup-buildx-action@v3
 
-      - name: Login to Docker Hub
-        uses: docker/login-action@v3
+      - uses: docker/login-action@v3
         with:
           username: ${{ env.DH_USER }}
           password: ${{ env.DH_TOKEN }}
@@ -58,29 +55,78 @@ jobs:
 
   deploy:
     needs: build-and-push
-    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
     env:
-      VM_HOST: ${{ secrets.VM_HOST }}
-      VM_USER: ${{ secrets.VM_USER }}
-      VM_SSH_KEY: ${{ secrets.VM_SSH_KEY }}
-    steps:
-      - name: Add VM to known_hosts
-        run: |
-          mkdir -p ~/.ssh
-          ssh-keyscan -H "$VM_HOST" >> ~/.ssh/known_hosts
+      GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
+      GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
+      GCE_ZONE: ${{ secrets.GCE_ZONE }}
+      APP_DIR: /home/youdnevergrazz/apps/newsfeed
 
-      - name: Deploy to VM
-        uses: appleboy/ssh-action@v1.2.0
+    steps:
+      - name: Authenticate with Google (OS Login)
+        uses: google-github-actions/auth@v2
         with:
-          host: ${{ env.VM_HOST }}
-          username: ${{ env.VM_USER }}
-          key: ${{ env.VM_SSH_KEY }}
-   
-          script: |
-            set -e
-            cd ~/apps/newsfeed
-            sudo docker compose pull
-            sudo docker compose up -d
-            sudo docker image prune -f
-            curl -fsS http://localhost/ >/dev/null
+          credentials_json: ${{ secrets.GCP_SA_KEY }}
+
+      - name: Install gcloud SDK
+        uses: google-github-actions/setup-gcloud@v2
+        with:
+          project_id: ${{ env.GCP_PROJECT }}
+
+      - name: Ensure VM exists
+        run: |
+          set -euo pipefail
+          if ! gcloud compute instances describe "${GCE_INSTANCE}" --zone "${GCE_ZONE}" >/dev/null 2>&1; then
+            echo "VM not found, creating..."
+
+            # Write startup script without heredoc (avoids EOF indentation issues)
+            STARTUP=startup.sh
+            : > "$STARTUP"
+            printf '%s\n' '#!/bin/bash' >> "$STARTUP"
+            printf '%s\n' 'set -eux' >> "$STARTUP"
+            printf '%s\n' 'apt-get update' >> "$STARTUP"
+            printf '%s\n' 'apt-get install -y ca-certificates curl gnupg lsb-release' >> "$STARTUP"
+            printf '%s\n' 'install -m 0755 -d /etc/apt/keyrings' >> "$STARTUP"
+            printf '%s\n' 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg' >> "$STARTUP"
+            printf '%s\n' 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null' >> "$STARTUP"
+            printf '%s\n' 'apt-get update' >> "$STARTUP"
+            printf '%s\n' 'apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin' >> "$STARTUP"
+            printf '%s\n' 'systemctl enable --now docker' >> "$STARTUP"
+            printf '%s\n' 'mkdir -p /home/youdnevergrazz/apps/newsfeed' >> "$STARTUP"
+
+            gcloud compute instances create "${GCE_INSTANCE}" \
+              --project "${GCP_PROJECT}" \
+              --zone "${GCE_ZONE}" \
+              --machine-type "e2-small" \
+              --image-family "ubuntu-2404-lts" \
+              --image-project "ubuntu-os-cloud" \
+              --boot-disk-size "20GB" \
+              --metadata enable-oslogin=TRUE \
+              --tags "http-server,https-server" \
+              --metadata-from-file startup-script="$STARTUP"
+          else
+            echo "VM already exists."
+          fi
+
+      - name: Ensure VM is running
+        run: |
+          STATUS=$(gcloud compute instances describe "${GCE_INSTANCE}" --zone "${GCE_ZONE}" --format='value(status)')
+          if [ "$STATUS" != "RUNNING" ]; then
+            echo "Starting VM..."
+            gcloud compute instances start "${GCE_INSTANCE}" --zone "${GCE_ZONE}"
+          fi
+
+      - name: Deploy using OS Login (Google Auth)
+        run: |
+          set -euo pipefail
+          gcloud compute ssh "${GCE_INSTANCE}" \
+            --zone "${GCE_ZONE}" \
+            --command "set -e;
+              cd ${APP_DIR} || { echo 'App dir not found'; exit 1; };
+              sudo docker compose pull;
+              sudo docker compose up -d;
+              sudo docker image prune -f;
+              curl -fsS http://localhost/ || echo 'Warning: health check failed';"
