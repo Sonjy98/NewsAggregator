@@ -14,7 +14,7 @@ using Microsoft.Extensions.AI;
 var builder = WebApplication.CreateBuilder(args);
 
 // ---------- Gemini ----------
-var chatModel = builder.Configuration["GoogleAi:ChatModel"] ?? "gemini-1.5-pro";
+var chatModel = builder.Configuration["GoogleAi:ChatModel"] ?? "gemini-2.5-pro";
 var embModel  = builder.Configuration["GoogleAi:EmbeddingModel"] ?? "text-embedding-004";
 var googleKey = builder.Configuration["GoogleAi:ApiKey"]
     ?? throw new InvalidOperationException("Missing GoogleAi:ApiKey in configuration.");
