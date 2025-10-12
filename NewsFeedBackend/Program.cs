@@ -5,8 +5,30 @@ using NewsFeedBackend.Data;
 using System.Text;
 using NewsFeedBackend;
 using NewsFeedBackend.Http;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.Connectors.Google;
+using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Embeddings;
+using Microsoft.Extensions.AI;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ---------- Gemini ----------
+var chatModel = builder.Configuration["GoogleAi:ChatModel"] ?? "gemini-2.5-pro";
+var embModel  = builder.Configuration["GoogleAi:EmbeddingModel"] ?? "text-embedding-004";
+var googleKey = builder.Configuration["GoogleAi:ApiKey"]
+    ?? throw new InvalidOperationException("Missing GoogleAi:ApiKey in configuration.");
+
+#pragma warning disable SKEXP0070
+builder.Services.AddSingleton<IChatCompletionService>(
+    _ => new GoogleAIGeminiChatCompletionService(chatModel, googleKey));
+
+builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
+    _ => new GoogleAIEmbeddingGenerator(embModel, googleKey));
+#pragma warning restore SKEXP0070
+builder.Services.AddSingleton<NewsFeedBackend.Services.NewsFilterExtractor>();
+builder.Services.AddSingleton<NewsFeedBackend.Services.SemanticReranker>();
+
 
 // ---------- Logging: slim + signal-only ----------
 builder.Logging.ClearProviders();

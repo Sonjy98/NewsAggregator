@@ -34,6 +34,9 @@ services:
       NewsData__DefaultCountry: "US"
       NewsData__DefaultCategory: ""
       NewsData__DefaultQuery: ""
+      GoogleAi__ApiKey: ${GOOGLEAI_API_KEY}
+      GoogleAi__ChatModel: ${GOOGLEGEMINI_CHAT_MODEL}
+      GoogleAi__EmbeddingModel: ${GOOGLEGEMINI_EMBED_MODEL}
       Smtp__Host: ${SMTP_HOST}
       Smtp__Port: ${SMTP_PORT}
       Smtp__Secure: ${SMTP_SECURE}
