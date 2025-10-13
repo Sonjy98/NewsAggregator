@@ -1,15 +1,17 @@
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using NewsFeedBackend.Data;
-using System.Text;
-using NewsFeedBackend;
-using NewsFeedBackend.Http;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.Google;
 using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.Google;
 using Microsoft.SemanticKernel.Embeddings;
 using Microsoft.Extensions.AI;
+using NewsFeedBackend;
+using NewsFeedBackend.Data;
+using NewsFeedBackend.Errors;
+using NewsFeedBackend.Http;
 using NewsFeedBackend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -25,7 +27,6 @@ var googleKey = builder.Configuration["GoogleAi:ApiKey"]
 #pragma warning disable SKEXP0070
 builder.Services.AddSingleton<IChatCompletionService>(
     _ => new GoogleAIGeminiChatCompletionService(chatModel, googleKey));
-
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
     _ => new GoogleAIEmbeddingGenerator(embModel, googleKey));
 #pragma warning restore SKEXP0070
@@ -44,9 +45,9 @@ builder.Services.AddScoped<CategoryNormalizer>();
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IPreferencesService, PreferencesService>();
 builder.Services.AddScoped<IExternalNewsService, ExternalNewsService>();
-builder.Services.AddTransient<IEmailSender, EmailSender>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IEmailDigestService, EmailDigestService>();
+builder.Services.AddTransient<IEmailSender, EmailSender>();
 
 // ======================================================================
 // 3) Logging (lean)
@@ -74,9 +75,11 @@ builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
      .AllowAnyMethod()));
 
 // ======================================================================
-// 5) Controllers / MVC
+// 5) Controllers / Swagger
 // ======================================================================
 builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
 // ======================================================================
 // 6) EF Core (MySQL) + dev extras
@@ -90,8 +93,7 @@ builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
 });
 
 // ======================================================================
-// 7) HttpClient(s)
-//    NOTE: define the "newsdata" client ONCE. Uses BaseUrl from config.
+// 7) HttpClient(s) — single named client ("newsdata")
 // ======================================================================
 builder.Services.AddTransient<LoggingHandler>();
 builder.Services.AddHttpClient("newsdata", (sp, c) =>
@@ -137,7 +139,38 @@ builder.Services.AddAuthorization();
 var app = builder.Build();
 
 // ======================================================================
-// 9) DB migrate on startup (dev-friendly)
+// 9) Global minimal JSON error handler
+//    Ensures FE always gets { status, code, message } for unhandled errors
+//    (Your controllers using ApiControllerBase.Safe(...) will still
+//     produce the same minimal shape for handled AppException cases.)
+// ======================================================================
+app.UseExceptionHandler(errorApp =>
+{
+    errorApp.Run(async context =>
+    {
+        context.Response.ContentType = "application/json";
+
+        var feature = context.Features.Get<IExceptionHandlerPathFeature>();
+        var ex = feature?.Error;
+
+        var status = 500;
+        var code = "internal/unexpected";
+        var message = "Something went wrong.";
+
+        if (ex is AppException aex)
+        {
+            status = aex.StatusCode;
+            code = aex.Code ?? aex.GetType().Name;
+            message = aex.Message;
+        }
+
+        context.Response.StatusCode = status;
+        await context.Response.WriteAsJsonAsync(new { status, code, message });
+    });
+});
+
+// ======================================================================
+// 10) DB migrate on startup (dev-friendly)
 // ======================================================================
 using (var scope = app.Services.CreateScope())
 {
@@ -146,8 +179,14 @@ using (var scope = app.Services.CreateScope())
 }
 
 // ======================================================================
-// 10) Pipeline
+// 11) Pipeline
 // ======================================================================
+if (app.Environment.IsDevelopment())
+{
+    app.UseSwagger();
+    app.UseSwaggerUI();
+}
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
