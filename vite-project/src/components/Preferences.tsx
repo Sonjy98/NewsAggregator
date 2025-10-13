@@ -16,7 +16,8 @@ export default function Preferences() {
   const { keywords, isLoading, error } = useKeywords();
   const { addKeyword, adding } = useAddKeyword();
   const { removeKeyword, removing } = useRemoveKeyword();
-  const { mutate: parseAndSave, isPending, data: nlData, error: nlError, reset } = useParseAndSavePrefs();
+  const { mutate: parseAndSave, isPending, data: nlData, error: nlError, reset } =
+    useParseAndSavePrefs();
 
   const submit = () => {
     const kw = value.trim();
@@ -41,9 +42,7 @@ export default function Preferences() {
         qc.invalidateQueries({ queryKey: NEWS_FOR_ME_QUERY_KEY });
       },
       onError: (e) =>
-        toast.error(
-          e instanceof Error ? e.message : "Failed to remove keyword"
-        ),
+        toast.error(e instanceof Error ? e.message : "Failed to remove keyword"),
     });
   };
 
@@ -53,6 +52,7 @@ export default function Preferences() {
     parseAndSave(q, {
       onSuccess: (res) => {
         toast.success(`Parsed preferences. Saved ${res.saved.length} new keyword(s).`);
+        qc.invalidateQueries({ queryKey: NEWS_FOR_ME_QUERY_KEY });
       },
       onError: (e: any) => toast.error(e?.message || "Failed to parse"),
     });
@@ -122,7 +122,7 @@ export default function Preferences() {
       <hr style={{ margin: "16px 0", border: 0, borderTop: "1px solid #eee" }} />
       <h4 style={{ margin: "8px 0" }}>Describe what you want</h4>
       <p style={{ marginTop: 0, color: "#555" }}>
-        Example: <i>Tech & AI, no crypto, prefer The Verge and Ars, last 7 days</i>
+        Example: <i>Tech & AI, no crypto, last 7 days</i>
       </p>
 
       {nlError && (
@@ -162,12 +162,9 @@ export default function Preferences() {
             <div>
               <div><strong>Include</strong></div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {spec.includeKeywords?.length ? spec.includeKeywords.map(k => <Pill key={"i-" + k}>{k}</Pill>) : <em>None</em>}
-              </div>
-
-              <div style={{ marginTop: 8 }}><strong>Must-have phrases</strong></div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {spec.mustHavePhrases?.length ? spec.mustHavePhrases.map(k => <Pill key={"m-" + k}>{k}</Pill>) : <em>None</em>}
+                {spec.includeKeywords?.length
+                  ? spec.includeKeywords.map((k: string) => <Pill key={"i-" + k}>{k}</Pill>)
+                  : <em>None</em>}
               </div>
 
               <div style={{ marginTop: 8 }}><strong>Category</strong></div>
@@ -177,12 +174,9 @@ export default function Preferences() {
             <div>
               <div><strong>Exclude</strong></div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {spec.excludeKeywords?.length ? spec.excludeKeywords.map(k => <Pill key={"e-" + k}>{k}</Pill>) : <em>None</em>}
-              </div>
-
-              <div style={{ marginTop: 8 }}><strong>Preferred sources</strong></div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {spec.preferredSources?.length ? spec.preferredSources.map(k => <Pill key={"s-" + k}>{k}</Pill>) : <em>None</em>}
+                {spec.excludeKeywords?.length
+                  ? spec.excludeKeywords.map((k: string) => <Pill key={"e-" + k}>{k}</Pill>)
+                  : <em>None</em>}
               </div>
 
               <div style={{ marginTop: 8 }}><strong>Time window</strong></div>
@@ -192,7 +186,7 @@ export default function Preferences() {
 
           <div style={{ marginTop: 10 }}>
             <strong>Saved this run:</strong>{" "}
-            {saved.length ? saved.map(k => <Pill key={"saved-" + k}>{k}</Pill>) : <em>None</em>}
+            {saved.length ? saved.map((k: string) => <Pill key={"saved-" + k}>{k}</Pill>) : <em>None</em>}
           </div>
         </div>
       )}

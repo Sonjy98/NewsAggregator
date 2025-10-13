@@ -5,13 +5,11 @@ Return a single minified JSON object with keys:
 - PreferredSources: string[] (optional; e.g., "The Verge","BBC","Ars Technica")
 - Category: string (optional; one of: technology, business, science, world, sports, entertainment, health)
 - TimeWindow: string (optional; one of: 24h, 7d, 30d)
-- MustHavePhrases: string[] (optional; exact phrases)
-- AvoidTopics: string[] (optional)
 
 Rules:
 - No commentary, no Markdown, no code fences. JSON only.
 - Keep arrays short (<= 10 items).
-- Respect negatives like "no crypto" -> ExcludeKeywords or AvoidTopics.
+- Respect negatives like "no crypto" -> ExcludeKeywords.
 - If unsure, leave fields null/empty rather than guessing wildly.
 
 IMPORTANT:

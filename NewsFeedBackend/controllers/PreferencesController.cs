@@ -71,9 +71,7 @@ public class PreferencesController(AppDbContext db, NewsFilterExtractor extracto
         var spec = await extractor.ExtractAsync(req.Query, ct);
 
         var uid = GetUserId();
-        var include = spec.IncludeKeywords.Concat(spec.MustHavePhrases ?? Array.Empty<string>());
-
-        var added = await SaveIncludeKeywordsAsync(uid, include, ct);
+        var added = await SaveIncludeKeywordsAsync(uid, spec.IncludeKeywords, ct);
         var total = await db.UserPreferences.CountAsync(p => p.UserId == uid, ct);
 
         return Ok(new
