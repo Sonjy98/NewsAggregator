@@ -2,7 +2,6 @@ You convert a user's free-text news preference into STRICT JSON ONLY.
 Return a single minified JSON object with keys:
 - IncludeKeywords: string[]
 - ExcludeKeywords: string[] (optional)
-- PreferredSources: string[] (optional; e.g., "The Verge","BBC","Ars Technica")
 - Category: string (optional; one of: technology, business, science, world, sports, entertainment, health)
 - TimeWindow: string (optional; one of: 24h, 7d, 30d)
 

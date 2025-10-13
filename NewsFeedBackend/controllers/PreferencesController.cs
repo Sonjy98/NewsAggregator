@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using NewsFeedBackend.Data;
 using NewsFeedBackend.Services;
 using System.Security.Claims;
-using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace NewsFeedBackend.Controllers;
 
@@ -13,6 +13,28 @@ namespace NewsFeedBackend.Controllers;
 [Authorize]
 public class PreferencesController(AppDbContext db, NewsFilterExtractor extractor) : ControllerBase
 {
+    private static readonly Regex SplitJoiners = new(@"\s*(?:,|&|/|\+|\band\b)\s*", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+
+    private static IEnumerable<string> ExpandCompoundKeywords(IEnumerable<string?> inputs)
+    {
+        foreach (var raw in inputs)
+        {
+            if (string.IsNullOrWhiteSpace(raw)) continue;
+
+            var s = raw.Trim().Trim('\"', '\'', '“', '”');
+            var parts = SplitJoiners.IsMatch(s)
+                ? SplitJoiners.Split(s)
+                : new[] { s };
+
+            foreach (var p in parts)
+            {
+                var cleaned = (p ?? "").Trim().ToLowerInvariant();
+                if (cleaned.Length is >= 1 and <= 128)
+                    yield return cleaned;
+            }
+        }
+    }
+
     private Guid GetUserId()
     {
         var id = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
@@ -33,18 +55,11 @@ public class PreferencesController(AppDbContext db, NewsFilterExtractor extracto
     [HttpPost]
     public async Task<ActionResult<IEnumerable<string>>> Add(AddKeywordRequest req, CancellationToken ct)
     {
-        var kw = (req.Keyword ?? "").Trim().ToLowerInvariant();
-        if (kw.Length is < 1 or > 128) return BadRequest("Keyword length must be 1–128.");
-        var uid = GetUserId();
+        var pieces = ExpandCompoundKeywords(new[] { req.Keyword }).ToArray();
+        if (pieces.Length == 0) return BadRequest("Keyword length must be 1–128.");
 
-        var exists = await db.UserPreferences.AnyAsync(p => p.UserId == uid && p.Keyword == kw, ct);
-        if (!exists)
-        {
-            var count = await db.UserPreferences.CountAsync(p => p.UserId == uid, ct);
-            if (count >= 20) return BadRequest("Max 20 keywords.");
-            db.UserPreferences.Add(new Models.UserPreference { UserId = uid, Keyword = kw });
-            await db.SaveChangesAsync(ct);
-        }
+        var uid = GetUserId();
+        await SaveIncludeKeywordsAsync(uid, pieces, ct);
         return await List(ct);
     }
 
@@ -71,7 +86,8 @@ public class PreferencesController(AppDbContext db, NewsFilterExtractor extracto
         var spec = await extractor.ExtractAsync(req.Query, ct);
 
         var uid = GetUserId();
-        var added = await SaveIncludeKeywordsAsync(uid, spec.IncludeKeywords, ct);
+        var toSave = ExpandCompoundKeywords(spec.IncludeKeywords ?? Array.Empty<string>()).ToArray();
+        var added = await SaveIncludeKeywordsAsync(uid, toSave, ct);
         var total = await db.UserPreferences.CountAsync(p => p.UserId == uid, ct);
 
         return Ok(new
@@ -81,6 +97,7 @@ public class PreferencesController(AppDbContext db, NewsFilterExtractor extracto
             total
         });
     }
+
     private async Task<string[]> SaveIncludeKeywordsAsync(Guid uid, IEnumerable<string> candidates, CancellationToken ct)
     {
         var normalized = candidates

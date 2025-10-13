@@ -10,7 +10,16 @@ export function useParseAndSavePrefs() {
     mutationFn: async (query: string): Promise<NLResponse> => {
       return PrefsApi.parseNatural(query);
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
+      qc.setQueryData<string[]>(PREFS_QUERY_KEY, (prev) => {
+        const current = Array.isArray(prev) ? prev : [];
+        const add = Array.isArray(data?.saved) ? data.saved : [];
+        if (add.length === 0) return current;
+        const set = new Set(current);
+        for (const k of add) set.add(k);
+        return Array.from(set);
+      });
+
       qc.invalidateQueries({ queryKey: PREFS_QUERY_KEY });
       qc.invalidateQueries({ queryKey: NEWS_FOR_ME_QUERY_KEY });
     },
