@@ -13,6 +13,7 @@ using NewsFeedBackend.Data;
 using NewsFeedBackend.Errors;
 using NewsFeedBackend.Http;
 using NewsFeedBackend.Services;
+using Microsoft.AspNetCore.HttpLogging;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -84,6 +85,12 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 
+builder.Services.AddHttpLogging(o =>
+{
+    o.LoggingFields =
+        HttpLoggingFields.RequestPropertiesAndHeaders |
+        HttpLoggingFields.ResponsePropertiesAndHeaders;
+});
 // ======================================================================
 // 6) EF Core (MySQL) + dev extras
 // ======================================================================
@@ -193,6 +200,8 @@ if (app.Environment.IsDevelopment())
     app.UseSwagger();
     app.UseSwaggerUI();
 }
+
+app.UseHttpLogging(); 
 
 app.UseCors();
 app.UseAuthentication();
