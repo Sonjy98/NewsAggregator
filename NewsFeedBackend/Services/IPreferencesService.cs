@@ -1,5 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 using NewsFeedBackend.Data;
+using NewsFeedBackend.Errors;
 using System.Text.RegularExpressions;
 
 namespace NewsFeedBackend.Services;
@@ -38,7 +39,8 @@ public class PreferencesService : IPreferencesService
     public async Task<IReadOnlyList<string>> AddAsync(Guid userId, AddKeywordRequest req, CancellationToken ct)
     {
         var pieces = ExpandCompoundKeywords(new[] { req.Keyword }).ToArray();
-        if (pieces.Length == 0) throw new ArgumentException("Keyword length must be 1–128.");
+        if (pieces.Length == 0)
+            throw new ValidationException("Keyword length must be 1–128.", code: "prefs/keyword-length");
 
         await SaveIncludeKeywordsAsync(userId, pieces, ct);
         return await ListAsync(userId, ct);
@@ -56,7 +58,7 @@ public class PreferencesService : IPreferencesService
     public async Task<(object spec, string[] saved, int total)> FromNaturalLanguageAsync(Guid userId, NLPreferenceRequest req, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(req.Query))
-            throw new ArgumentException("Query is required.");
+            throw new ValidationException("Query is required.", code: "prefs/query-required");
 
         var spec = await _extractor.ExtractAsync(req.Query, ct);
 

@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using NewsFeedBackend.Data;
+using NewsFeedBackend.Errors;
 
 namespace NewsFeedBackend.Services;
 
@@ -48,7 +49,7 @@ public sealed class EmailDigestService : IEmailDigestService
         var userId = _current.GetUserId(userPrincipal);
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Id == userId, ct)
-                   ?? throw new UnauthorizedAccessException("User not found.");
+                   ?? throw new UnauthorizedAppException("User not found.", code: "email/user-missing");
 
         var keywords = await _db.UserPreferences
             .Where(p => p.UserId == userId)
@@ -66,7 +67,7 @@ public sealed class EmailDigestService : IEmailDigestService
         if (!resp.IsSuccessStatusCode)
         {
             var body = await resp.Content.ReadAsStringAsync(ct);
-            throw new InvalidOperationException($"News API error {(int)resp.StatusCode}: {body}");
+            throw new ExternalServiceException($"News API error {(int)resp.StatusCode}: {body}", code: "email/upstream-error");
         }
 
         var payload = await resp.Content.ReadFromJsonAsync<NewsDto>(cancellationToken: ct) ?? new();
@@ -78,7 +79,7 @@ public sealed class EmailDigestService : IEmailDigestService
         return new EmailDigestResult(user.Email, items.Count);
     }
 
-    // ---------------- helpers / models (kept internal to service) ----------------
+    // ---------------- helpers / models ----------------
     static string H(string? s) => System.Net.WebUtility.HtmlEncode(s ?? "");
 
     static string EmailHtml(string toEmail, List<string> keywords, List<Article> items)

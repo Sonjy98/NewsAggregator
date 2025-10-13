@@ -2,6 +2,7 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using NewsFeedBackend.Data;
 using NewsFeedBackend.Models;
+using NewsFeedBackend.Errors;
 using System.IdentityModel.Tokens.Jwt;
 using System.Security.Claims;
 using System.Text;
@@ -29,10 +30,11 @@ public sealed class AuthService : IAuthService
     {
         var email = (req.Email ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(req.Password))
-            throw new ArgumentException("Email and password are required.");
+            throw new ValidationException("Email and password are required.", code: "auth/required");
 
         var exists = await _db.Users.AnyAsync(u => u.Email == email, ct);
-        if (exists) throw new InvalidOperationException("Email already registered.");
+        if (exists)
+            throw new ConflictException("Email already registered.", code: "auth/email-taken");
 
         var user = new User
         {
@@ -52,11 +54,11 @@ public sealed class AuthService : IAuthService
     {
         var email = (req.Email ?? "").Trim().ToLowerInvariant();
         if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(req.Password))
-            throw new ArgumentException("Email and password are required.");
+            throw new ValidationException("Email and password are required.", code: "auth/required");
 
         var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
         if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-            throw new UnauthorizedAccessException("Invalid credentials.");
+            throw new UnauthorizedAppException("Invalid credentials.", code: "auth/invalid-credentials");
 
         var token = CreateJwt(user);
         return new AuthResponse(user.Id, user.Email, token);

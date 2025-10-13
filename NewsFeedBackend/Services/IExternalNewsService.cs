@@ -1,6 +1,7 @@
 using System.Security.Claims;
 using Microsoft.EntityFrameworkCore;
 using NewsFeedBackend.Data;
+using NewsFeedBackend.Errors;
 using System.Text;
 
 namespace NewsFeedBackend.Services;
@@ -58,7 +59,7 @@ public sealed class ExternalNewsService : IExternalNewsService
     public Task<ProxyResult> SearchAsync(string q, string language, string? timeWindow, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(q))
-            throw new ArgumentException("q required", nameof(q));
+            throw new ValidationException("q required", code: "news/q-required");
 
         var fromDate = FromDateForWindow(timeWindow);
         var url = BuildUrl(q, language, country: null, category: null, fromDate);
@@ -121,6 +122,10 @@ public sealed class ExternalNewsService : IExternalNewsService
     {
         var resp = await _http.GetAsync(url, ct);
         var body = await resp.Content.ReadAsStringAsync(ct);
+
+        if (!resp.IsSuccessStatusCode)
+            throw new ExternalServiceException($"News API error {(int)resp.StatusCode}: {body}", code: "news/upstream-error");
+
         return new ProxyResult((int)resp.StatusCode, body);
     }
 }

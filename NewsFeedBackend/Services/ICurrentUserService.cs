@@ -1,4 +1,5 @@
 using System.Security.Claims;
+using NewsFeedBackend.Errors;
 
 namespace NewsFeedBackend.Services;
 
@@ -13,7 +14,7 @@ public class CurrentUserService : ICurrentUserService
     {
         var id = user.FindFirstValue(ClaimTypes.NameIdentifier) ?? user.FindFirstValue("sub");
         if (!Guid.TryParse(id, out var userId))
-            throw new InvalidOperationException("Bad user id in token.");
+            throw new UnauthorizedAppException("Bad user id in token.", code: "auth/bad-userid");
         return userId;
     }
 }
