@@ -63,9 +63,12 @@ jobs:
       GCP_PROJECT: ${{ secrets.GCP_PROJECT }}
       GCE_INSTANCE: ${{ secrets.GCE_INSTANCE }}
       GCE_ZONE: ${{ secrets.GCE_ZONE }}
-      APP_DIR: /home/youdnevergrazz/apps/newsfeed
+      APP_SUBDIR: apps/newsfeed
 
     steps:
+      - name: Checkout repo (for compose files)
+        uses: actions/checkout@v4
+
       - name: Authenticate with Google (OS Login)
         uses: google-github-actions/auth@v2
         with:
@@ -81,24 +84,22 @@ jobs:
           set -euo pipefail
           if ! gcloud compute instances describe "${GCE_INSTANCE}" --zone "${GCE_ZONE}" >/dev/null 2>&1; then
             echo "VM not found, creating..."
-
-            # Write startup script without heredoc (avoids EOF indentation issues)
             STARTUP=startup.sh
             : > "$STARTUP"
-            printf '%s\n' '#!/bin/bash' >> "$STARTUP"
-            printf '%s\n' 'set -eux' >> "$STARTUP"
-            printf '%s\n' 'apt-get update' >> "$STARTUP"
-            printf '%s\n' 'apt-get install -y ca-certificates curl gnupg lsb-release' >> "$STARTUP"
-            printf '%s\n' 'install -m 0755 -d /etc/apt/keyrings' >> "$STARTUP"
-            printf '%s\n' 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg' >> "$STARTUP"
-            printf '%s\n' 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) stable" | tee /etc/apt/sources.list.d/docker.list > /dev/null' >> "$STARTUP"
-            printf '%s\n' 'apt-get update' >> "$STARTUP"
-            printf '%s\n' 'apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin' >> "$STARTUP"
-            printf '%s\n' 'systemctl enable --now docker' >> "$STARTUP"
-            printf '%s\n' 'mkdir -p /home/youdnevergrazz/apps/newsfeed' >> "$STARTUP"
+            {
+              echo '#!/bin/bash'
+              echo 'set -eux'
+              echo 'apt-get update'
+              echo 'apt-get install -y ca-certificates curl gnupg lsb-release'
+              echo 'install -m 0755 -d /etc/apt/keyrings'
+              echo 'curl -fsSL https://download.docker.com/linux/ubuntu/gpg | gpg --dearmor -o /etc/apt/keyrings/docker.gpg'
+              echo 'echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu $(. /etc/os-release && echo $UBUNTU_CODENAME) stable" >/etc/apt/sources.list.d/docker.list'
+              echo 'apt-get update'
+              echo 'apt-get install -y docker-ce docker-ce-cli containerd.io docker-compose-plugin'
+              echo 'systemctl enable --now docker'
+            } >> "$STARTUP"
 
             gcloud compute instances create "${GCE_INSTANCE}" \
-              --project "${GCP_PROJECT}" \
               --zone "${GCE_ZONE}" \
               --machine-type "e2-small" \
               --image-family "ubuntu-2404-lts" \
@@ -115,18 +116,26 @@ jobs:
         run: |
           STATUS=$(gcloud compute instances describe "${GCE_INSTANCE}" --zone "${GCE_ZONE}" --format='value(status)')
           if [ "$STATUS" != "RUNNING" ]; then
-            echo "Starting VM..."
             gcloud compute instances start "${GCE_INSTANCE}" --zone "${GCE_ZONE}"
           fi
 
-      - name: Deploy using OS Login (Google Auth)
+      - name: Prepare app directory on VM
+        run: |
+          gcloud compute ssh "${GCE_INSTANCE}" --zone "${GCE_ZONE}" --command \
+            "mkdir -p ~/${APP_SUBDIR}"
+
+      - name: Copy compose files from repo to VM
         run: |
           set -euo pipefail
-          gcloud compute ssh "${GCE_INSTANCE}" \
-            --zone "${GCE_ZONE}" \
-            --command "set -e;
-              cd ${APP_DIR} || { echo 'App dir not found'; exit 1; };
-              sudo docker compose pull;
-              sudo docker compose up -d;
-              sudo docker image prune -f;
-              curl -fsS http://localhost/ || echo 'Warning: health check failed';"
+          gcloud compute scp --zone "${GCE_ZONE}" \
+            docker-compose.yml "${GCE_INSTANCE}:~/${APP_SUBDIR}/"
+
+      - name: Deploy containers
+        run: |
+          gcloud compute ssh "${GCE_INSTANCE}" --zone "${GCE_ZONE}" --command \
+            "set -e;
+             cd ~/${APP_SUBDIR};
+             sudo docker compose pull;
+             sudo docker compose up -d;
+             sudo docker image prune -f;
+             curl -fsS http://localhost/ || echo 'Health check failed';"

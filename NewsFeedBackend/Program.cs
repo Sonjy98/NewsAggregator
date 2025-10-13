@@ -10,6 +10,7 @@ using Microsoft.SemanticKernel.Connectors.Google;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Embeddings;
 using Microsoft.Extensions.AI;
+using NewsFeedBackend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -26,9 +27,12 @@ builder.Services.AddSingleton<IChatCompletionService>(
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
     _ => new GoogleAIEmbeddingGenerator(embModel, googleKey));
 #pragma warning restore SKEXP0070
-builder.Services.AddSingleton<NewsFeedBackend.Services.NewsFilterExtractor>();
-builder.Services.AddSingleton<NewsFeedBackend.Services.SemanticReranker>();
-
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<IPromptLoader, PromptLoader>();
+builder.Services.AddSingleton<NewsFilterExtractor>();
+builder.Services.AddSingleton<SemanticReranker>();
+builder.Services.AddScoped<DeduperService>();
+builder.Services.AddScoped<CategoryNormalizer>();
 
 // ---------- Logging: slim + signal-only ----------
 builder.Logging.ClearProviders();

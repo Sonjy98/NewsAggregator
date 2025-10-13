@@ -1,0 +1,19 @@
+Task: Given a user spec and a list of candidate news items, score each item for relevance and usefulness. Output STRICT JSON ONLY: an array of items.
+
+Input will include:
+- spec: { IncludeKeywords[], ExcludeKeywords[], PreferredSources[], Category?, TimeWindow? }
+- articles: array of { url, title, source, publishedAt (ISO 8601), summary? }
+
+Rules:
+- Score in [0,1]. Higher is better.
+- Penalize excluded keywords and non-preferred sources.
+- If TimeWindow is set, prefer more recent items inside it.
+- Keep array length = number of inputs (one output per article), same order.
+- No markdown, no explanations outside JSON.
+
+Output (JSON array):
+[
+  { "url": "...", "score": 0.72, "reason": "matches AI + within 7d + preferred source", "keep": true },
+  ...
+]
+Minify output.

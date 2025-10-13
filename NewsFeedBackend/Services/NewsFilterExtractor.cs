@@ -9,39 +9,26 @@ public sealed record NewsFilterSpec(
     string[]? ExcludeKeywords,
     string[]? PreferredSources,
     string? Category,
-    string? TimeWindow,
-    string[]? MustHavePhrases,
-    string[]? AvoidTopics
+    string? TimeWindow
 );
 
 public sealed class NewsFilterExtractor
 {
     private readonly IChatCompletionService _chat;
+    private readonly IPromptLoader _prompts;
 
-    public NewsFilterExtractor(IChatCompletionService chat) => _chat = chat;
+    public NewsFilterExtractor(IChatCompletionService chat, IPromptLoader prompts)
+    {
+        _chat = chat;
+        _prompts = prompts;
+    }
 
     public async Task<NewsFilterSpec> ExtractAsync(string userQuery, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(userQuery))
             throw new ArgumentException("Query cannot be empty.", nameof(userQuery));
 
-        var system = """
-            You convert a user's free-text news preference into STRICT JSON ONLY.
-            Return a single minified JSON object with keys:
-            - IncludeKeywords: string[]
-            - ExcludeKeywords: string[] (optional)
-            - PreferredSources: string[] (optional; e.g., "The Verge","BBC","Ars Technica")
-            - Category: string (optional; one of: technology, business, science, world, sports, entertainment, health)
-            - TimeWindow: string (optional; one of: 24h, 7d, 30d)
-            - MustHavePhrases: string[] (optional; exact phrases)
-            - AvoidTopics: string[] (optional)
-            Rules:
-            - No commentary, no Markdown, no code fences. JSON only.
-            - Keep arrays short (<= 10 items).
-            - Respect negatives like "no crypto" -> ExcludeKeywords or AvoidTopics.
-            - If unsure, leave fields null/empty rather than guessing wildly.
-            """;
-
+        var system = _prompts.Load("NewsFilter");
         var user = $"User request: {userQuery}";
 
         var history = new ChatHistory();
@@ -54,38 +41,38 @@ public sealed class NewsFilterExtractor
         var json = ExtractFirstJsonObject(text)
                    ?? throw new InvalidOperationException("Model did not return JSON.");
 
-        var spec = JsonSerializer.Deserialize<NewsFilterSpec>(
-            json,
-            new JsonSerializerOptions { PropertyNameCaseInsensitive = true }
+        using var doc = JsonDocument.Parse(json);
+        var root = doc.RootElement;
+
+        var include          = GetStringArray(root, "includeKeywords");
+        var exclude          = GetStringArray(root, "excludeKeywords"); // no avoidTopics
+        var preferredSources = GetStringArray(root, "preferredSources");
+        var category         = GetString(root, "category");
+        var timeWindow       = NormalizeWindow(GetString(root, "timeWindow"));
+
+        var spec = new NewsFilterSpec(
+            IncludeKeywords  : Normalize(include),
+            ExcludeKeywords  : Normalize(exclude),
+            PreferredSources : Normalize(preferredSources),
+            Category         : NullIfEmpty(category),
+            TimeWindow       : timeWindow
         );
 
-        if (spec is null || spec.IncludeKeywords is null)
-            throw new InvalidOperationException("Invalid JSON from model (IncludeKeywords missing).");
-
-        spec = spec with
-        {
-            IncludeKeywords   = Normalize(spec.IncludeKeywords),
-            ExcludeKeywords   = Normalize(spec.ExcludeKeywords),
-            PreferredSources  = Normalize(spec.PreferredSources),
-            MustHavePhrases   = Normalize(spec.MustHavePhrases),
-            AvoidTopics       = Normalize(spec.AvoidTopics),
-            Category          = NullIfEmpty(spec.Category),
-            TimeWindow        = NormalizeWindow(spec.TimeWindow)
-        };
+        if (spec.IncludeKeywords is null)
+            throw new InvalidOperationException("Invalid JSON from model (includeKeywords missing).");
 
         return spec;
     }
 
     static string[] Normalize(string[]? arr) =>
-    arr is null
-        ? Array.Empty<string>()
-        : arr
-            .Select(s => s?.Trim())
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => s!) // assert non-null after filter
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
-
+        arr is null
+            ? Array.Empty<string>()
+            : arr
+                .Select(s => s?.Trim())
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => s!)
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .ToArray();
 
     static string? NullIfEmpty(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null : s.Trim();
@@ -94,14 +81,51 @@ public sealed class NewsFilterExtractor
     {
         if (string.IsNullOrWhiteSpace(w)) return null;
         var t = w.Trim().ToLowerInvariant();
-        return t switch { "24h" or "1d" => "24h", "7d" or "week" => "7d", "30d" or "month" => "30d", _ => null };
+        return t switch
+        {
+            "24h" or "1d" or "day" => "24h",
+            "7d" or "week" or "7days" => "7d",
+            "30d" or "month" => "30d",
+            _ => null
+        };
     }
 
     static string? ExtractFirstJsonObject(string text)
     {
         text = text.Replace("```json", "").Replace("```", "").Trim();
-
         var match = Regex.Match(text, @"\{(?:[^{}]|(?<o>\{)|(?<-o>\}))+(?(o)(?!))\}");
         return match.Success ? match.Value : null;
+    }
+
+    static string? GetString(JsonElement root, string name)
+    {
+        if (root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String)
+            return v.GetString();
+
+        var pascal = char.ToUpperInvariant(name[0]) + name[1..];
+        if (root.TryGetProperty(pascal, out v) && v.ValueKind == JsonValueKind.String)
+            return v.GetString();
+
+        return null;
+    }
+
+    static string[] GetStringArray(JsonElement root, string name)
+    {
+        static string[] ReadArray(JsonElement e)
+            => e.ValueKind == JsonValueKind.Array
+                ? e.EnumerateArray()
+                    .Where(x => x.ValueKind == JsonValueKind.String)
+                    .Select(x => x.GetString() ?? string.Empty)
+                    .ToArray()
+                : Array.Empty<string>();
+
+        if (root.TryGetProperty(name, out var v))
+            return ReadArray(v);
+
+        var pascal = char.ToUpperInvariant(name[0]) + name[1..];
+        if (root.TryGetProperty(pascal, out v))
+            return ReadArray(v);
+
+        return Array.Empty<string>();
     }
 }

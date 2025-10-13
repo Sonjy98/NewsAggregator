@@ -1,11 +1,9 @@
 import { useQuery } from '@tanstack/react-query';
-import { PrefsApi } from '../lib/prefs';
-
-export const keywordsKey = ['prefs', 'keywords'] as const;
+import { PrefsApi, PREFS_QUERY_KEY } from '../lib/prefs';
 
 export function useKeywords() {
   const q = useQuery<string[], Error>({
-    queryKey: keywordsKey,
+    queryKey: PREFS_QUERY_KEY,
     queryFn: () => PrefsApi.list(),
     staleTime: 60_000,
   });

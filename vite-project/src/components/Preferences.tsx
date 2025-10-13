@@ -2,18 +2,22 @@ import { useState } from "react";
 import { useKeywords } from "../hooks/useKeywords";
 import { useAddKeyword } from "../hooks/useAddKeyword";
 import { useRemoveKeyword } from "../hooks/useRemoveKeyword";
-import { useParseNatural } from "../hooks/useParseNatural";
 import { toast } from "react-hot-toast";
+import { useQueryClient } from "@tanstack/react-query";
+import { useParseAndSavePrefs } from "../hooks/useParseAndSavePrefs";
+import { PREFS_QUERY_KEY, NEWS_FOR_ME_QUERY_KEY } from "../lib/prefs";
 
 export default function Preferences() {
-  const [value, setValue] = useState("");
+  const qc = useQueryClient();
 
+  const [value, setValue] = useState("");
   const [nl, setNl] = useState("");
 
   const { keywords, isLoading, error } = useKeywords();
   const { addKeyword, adding } = useAddKeyword();
   const { removeKeyword, removing } = useRemoveKeyword();
-  const { parseNatural, parsing, data: nlData, error: nlError, reset: resetNl } = useParseNatural();
+  const { mutate: parseAndSave, isPending, data: nlData, error: nlError, reset } =
+    useParseAndSavePrefs();
 
   const submit = () => {
     const kw = value.trim();
@@ -22,26 +26,35 @@ export default function Preferences() {
       onSuccess: () => {
         setValue("");
         toast.success(`Added "${kw}"`);
+        qc.invalidateQueries({ queryKey: PREFS_QUERY_KEY });
+        qc.invalidateQueries({ queryKey: NEWS_FOR_ME_QUERY_KEY });
       },
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to add keyword"),
+      onError: (e) =>
+        toast.error(e instanceof Error ? e.message : "Failed to add keyword"),
     });
   };
 
   const onRemove = (kw: string) => {
     removeKeyword(kw, {
-      onSuccess: () => toast.success(`Removed "${kw}"`),
-      onError: (e) => toast.error(e instanceof Error ? e.message : "Failed to remove keyword"),
+      onSuccess: () => {
+        toast.success(`Removed "${kw}"`);
+        qc.invalidateQueries({ queryKey: PREFS_QUERY_KEY });
+        qc.invalidateQueries({ queryKey: NEWS_FOR_ME_QUERY_KEY });
+      },
+      onError: (e) =>
+        toast.error(e instanceof Error ? e.message : "Failed to remove keyword"),
     });
   };
 
   const submitNL = () => {
     const q = nl.trim();
     if (!q) return;
-    parseNatural(q, {
+    parseAndSave(q, {
       onSuccess: (res) => {
         toast.success(`Parsed preferences. Saved ${res.saved.length} new keyword(s).`);
+        qc.invalidateQueries({ queryKey: NEWS_FOR_ME_QUERY_KEY });
       },
-      onError: (e) => toast.error(e.message || "Failed to parse"),
+      onError: (e: any) => toast.error(e?.message || "Failed to parse"),
     });
   };
 
@@ -76,7 +89,9 @@ export default function Preferences() {
       {/* Existing keywords */}
       <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 16 }}>
         {isLoading && <span>Loading…</span>}
-        {!isLoading && keywords.length === 0 && <span style={{ color: "#666" }}>No keywords yet.</span>}
+        {!isLoading && keywords.length === 0 && (
+          <span style={{ color: "#666" }}>No keywords yet.</span>
+        )}
         {keywords.map((kw) => (
           <span
             key={kw}
@@ -107,12 +122,12 @@ export default function Preferences() {
       <hr style={{ margin: "16px 0", border: 0, borderTop: "1px solid #eee" }} />
       <h4 style={{ margin: "8px 0" }}>Describe what you want</h4>
       <p style={{ marginTop: 0, color: "#555" }}>
-        Example: <i>Tech & AI, no crypto, prefer The Verge and Ars, last 7 days</i>
+        Example: <i>Tech & AI, no crypto, last 7 days</i>
       </p>
 
       {nlError && (
         <div style={{ background: "#fee", padding: 8, borderRadius: 6, marginBottom: 8 }}>
-          {nlError.message}
+          {(nlError as Error).message}
         </div>
       )}
 
@@ -123,13 +138,19 @@ export default function Preferences() {
           rows={3}
           placeholder="Write your preferences in natural language…"
           style={{ flex: 1, padding: 8, borderRadius: 6, border: "1px solid #ccc" }}
-          disabled={parsing}
+          disabled={isPending}
         />
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-          <button onClick={submitNL} disabled={parsing || !nl.trim()}>
-            {parsing ? "Parsing…" : "Parse & Save"}
+          <button onClick={submitNL} disabled={isPending || !nl.trim()}>
+            {isPending ? "Parsing…" : "Parse & Save"}
           </button>
-          <button onClick={() => { setNl(""); resetNl(); }} disabled={parsing}>
+          <button
+            onClick={() => {
+              setNl("");
+              reset();
+            }}
+            disabled={isPending}
+          >
             Clear
           </button>
         </div>
@@ -141,12 +162,9 @@ export default function Preferences() {
             <div>
               <div><strong>Include</strong></div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {spec.includeKeywords?.length ? spec.includeKeywords.map(k => <Pill key={"i-" + k}>{k}</Pill>) : <em>None</em>}
-              </div>
-
-              <div style={{ marginTop: 8 }}><strong>Must-have phrases</strong></div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {spec.mustHavePhrases?.length ? spec.mustHavePhrases.map(k => <Pill key={"m-" + k}>{k}</Pill>) : <em>None</em>}
+                {spec.includeKeywords?.length
+                  ? spec.includeKeywords.map((k: string) => <Pill key={"i-" + k}>{k}</Pill>)
+                  : <em>None</em>}
               </div>
 
               <div style={{ marginTop: 8 }}><strong>Category</strong></div>
@@ -156,12 +174,9 @@ export default function Preferences() {
             <div>
               <div><strong>Exclude</strong></div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {spec.excludeKeywords?.length ? spec.excludeKeywords.map(k => <Pill key={"e-" + k}>{k}</Pill>) : <em>None</em>}
-              </div>
-
-              <div style={{ marginTop: 8 }}><strong>Preferred sources</strong></div>
-              <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
-                {spec.preferredSources?.length ? spec.preferredSources.map(k => <Pill key={"s-" + k}>{k}</Pill>) : <em>None</em>}
+                {spec.excludeKeywords?.length
+                  ? spec.excludeKeywords.map((k: string) => <Pill key={"e-" + k}>{k}</Pill>)
+                  : <em>None</em>}
               </div>
 
               <div style={{ marginTop: 8 }}><strong>Time window</strong></div>
@@ -171,7 +186,7 @@ export default function Preferences() {
 
           <div style={{ marginTop: 10 }}>
             <strong>Saved this run:</strong>{" "}
-            {saved.length ? saved.map(k => <Pill key={"saved-" + k}>{k}</Pill>) : <em>None</em>}
+            {saved.length ? saved.map((k: string) => <Pill key={"saved-" + k}>{k}</Pill>) : <em>None</em>}
           </div>
         </div>
       )}
