@@ -10,6 +10,7 @@ using Microsoft.SemanticKernel.Connectors.Google;
 using Microsoft.SemanticKernel.ChatCompletion;
 using Microsoft.SemanticKernel.Embeddings;
 using Microsoft.Extensions.AI;
+using NewsFeedBackend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -28,6 +29,7 @@ builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
 #pragma warning restore SKEXP0070
 builder.Services.AddSingleton<NewsFeedBackend.Services.NewsFilterExtractor>();
 builder.Services.AddSingleton<NewsFeedBackend.Services.SemanticReranker>();
+builder.Services.AddSingleton<IPromptLoader, PromptLoader>();
 
 
 // ---------- Logging: slim + signal-only ----------
