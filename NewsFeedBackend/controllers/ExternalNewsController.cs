@@ -6,79 +6,35 @@ namespace NewsFeedBackend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class ExternalNewsController : ControllerBase
+public sealed class ExternalNewsController : ApiControllerBase
 {
     private readonly IExternalNewsService _svc;
-
-    public ExternalNewsController(IExternalNewsService svc)
-    {
-        _svc = svc;
-    }
+    public ExternalNewsController(ILogger<ExternalNewsController> logger, IExternalNewsService svc) : base(logger) => _svc = svc;
 
     [HttpGet("newsdata")]
     [AllowAnonymous]
-    public async Task<IActionResult> Raw(
-        [FromQuery] string? q,
-        [FromQuery] string? language,
-        [FromQuery] string? country,
-        [FromQuery] string? category,
-        [FromQuery] string? timeWindow,
-        CancellationToken ct = default)
-    {
-        try
+    public Task<IActionResult> Raw(string? q, string? language, string? country, string? category, string? timeWindow, CancellationToken ct = default)
+        => Safe("ExternalNews/Raw", async () =>
         {
             var r = await _svc.RawAsync(q, language, country, category, timeWindow, ct);
             return StatusCode(r.StatusCode, r.Body);
-        }
-        catch (Exception ex)
-        {
-            return Problem(ex.Message);
-        }
-    }
+        });
 
     [HttpGet("search")]
     [AllowAnonymous]
-    public async Task<IActionResult> Search(
-        [FromQuery] string q,
-        [FromQuery] string language = "en",
-        [FromQuery] string? timeWindow = null,
-        CancellationToken ct = default)
-    {
-        try
+    public Task<IActionResult> Search(string q, string language = "en", string? timeWindow = null, CancellationToken ct = default)
+        => Safe("ExternalNews/Search", async () =>
         {
             var r = await _svc.SearchAsync(q, language, timeWindow, ct);
             return StatusCode(r.StatusCode, r.Body);
-        }
-        catch (ArgumentException aex)
-        {
-            return BadRequest(aex.Message);
-        }
-        catch (Exception ex)
-        {
-            return Problem(ex.Message);
-        }
-    }
+        });
 
     [HttpGet("for-me")]
     [Authorize]
-    public async Task<IActionResult> ForMe(
-        [FromQuery] string? language = null,
-        [FromQuery] string? category = null,
-        [FromQuery] string? timeWindow = null,
-        CancellationToken ct = default)
-    {
-        try
+    public Task<IActionResult> ForMe(string? language = null, string? category = null, string? timeWindow = null, CancellationToken ct = default)
+        => Safe("ExternalNews/ForMe", async () =>
         {
             var r = await _svc.ForUserAsync(User, language, category, timeWindow, ct);
             return StatusCode(r.StatusCode, r.Body);
-        }
-        catch (UnauthorizedAccessException uex)
-        {
-            return Unauthorized(uex.Message);
-        }
-        catch (Exception ex)
-        {
-            return Problem(ex.Message);
-        }
-    }
+        });
 }

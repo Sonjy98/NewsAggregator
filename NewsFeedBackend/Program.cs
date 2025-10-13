@@ -59,12 +59,15 @@ builder.Logging.AddSimpleConsole(o =>
     o.SingleLine = true;
 });
 
-builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Error);
-builder.Logging.AddFilter("Microsoft.AspNetCore.Routing.EndpointMiddleware", LogLevel.Error);
-builder.Logging.AddFilter("Microsoft.AspNetCore.Mvc.Infrastructure", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
+builder.Logging.AddFilter("System", LogLevel.Warning);
+
 builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
-builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Error);
-builder.Logging.AddFilter("System.Net.Http.HttpClient.newsdata", LogLevel.Error);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.newsdata", LogLevel.Warning);
+
 
 // ======================================================================
 // 4) CORS
@@ -149,9 +152,12 @@ app.UseExceptionHandler(errorApp =>
     errorApp.Run(async context =>
     {
         context.Response.ContentType = "application/json";
-
         var feature = context.Features.Get<IExceptionHandlerPathFeature>();
         var ex = feature?.Error;
+
+        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>()
+                                            .CreateLogger("GlobalException");
+        if (ex != null) logger.LogError(ex, "Unhandled exception at {Path}", feature?.Path);
 
         var status = 500;
         var code = "internal/unexpected";
@@ -168,6 +174,7 @@ app.UseExceptionHandler(errorApp =>
         await context.Response.WriteAsJsonAsync(new { status, code, message });
     });
 });
+
 
 // ======================================================================
 // 10) DB migrate on startup (dev-friendly)
