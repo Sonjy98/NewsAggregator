@@ -1,6 +1,7 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using NewsFeedBackend.Services;
+using NewsFeedBackend.Constants;
 
 namespace NewsFeedBackend.Controllers;
 
@@ -12,7 +13,10 @@ public sealed class PreferencesController : ApiControllerBase
     private readonly IPreferencesService _service;
     private readonly ICurrentUserService _currentUser;
 
-    public PreferencesController(ILogger<PreferencesController> logger, IPreferencesService service, ICurrentUserService currentUser)
+    public PreferencesController(
+        ILogger<PreferencesController> logger,
+        IPreferencesService service,
+        ICurrentUserService currentUser)
         : base(logger)
     {
         _service = service;
@@ -21,7 +25,7 @@ public sealed class PreferencesController : ApiControllerBase
 
     [HttpGet]
     public Task<IActionResult> List(CancellationToken ct)
-        => Safe("Preferences/List", async () =>
+        => Safe(Operations.PreferencesList, async () =>
         {
             var uid = _currentUser.GetUserId(User);
             var result = await _service.ListAsync(uid, ct);
@@ -30,7 +34,7 @@ public sealed class PreferencesController : ApiControllerBase
 
     [HttpPost]
     public Task<IActionResult> Add([FromBody] AddKeywordRequest req, CancellationToken ct)
-        => Safe("Preferences/Add", async () =>
+        => Safe(Operations.PreferencesAdd, async () =>
         {
             var uid = _currentUser.GetUserId(User);
             var result = await _service.AddAsync(uid, req, ct);
@@ -39,7 +43,7 @@ public sealed class PreferencesController : ApiControllerBase
 
     [HttpDelete("{keyword}")]
     public Task<IActionResult> Remove(string keyword, CancellationToken ct)
-        => Safe("Preferences/Remove", async () =>
+        => Safe(Operations.PreferencesRemove, async () =>
         {
             var uid = _currentUser.GetUserId(User);
             await _service.RemoveAsync(uid, keyword, ct);
@@ -48,7 +52,7 @@ public sealed class PreferencesController : ApiControllerBase
 
     [HttpPost("natural-language")]
     public Task<IActionResult> FromNaturalLanguage([FromBody] NLPreferenceRequest req, CancellationToken ct)
-        => Safe("Preferences/NaturalLanguage", async () =>
+        => Safe(Operations.PreferencesNaturalLanguage, async () =>
         {
             var uid = _currentUser.GetUserId(User);
             var (spec, saved, total) = await _service.FromNaturalLanguageAsync(uid, req, ct);
