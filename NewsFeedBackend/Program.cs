@@ -14,7 +14,9 @@ using NewsFeedBackend.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---------- Gemini ----------
+// ======================================================================
+// 1) AI / Semantic Kernel
+// ======================================================================
 var chatModel = builder.Configuration["GoogleAi:ChatModel"] ?? "gemini-2.5-pro";
 var embModel  = builder.Configuration["GoogleAi:EmbeddingModel"] ?? "text-embedding-004";
 var googleKey = builder.Configuration["GoogleAi:ApiKey"]
@@ -27,14 +29,28 @@ builder.Services.AddSingleton<IChatCompletionService>(
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
     _ => new GoogleAIEmbeddingGenerator(embModel, googleKey));
 #pragma warning restore SKEXP0070
+
 builder.Services.AddMemoryCache();
+
+// ======================================================================
+// 2) App Services (DI)
+// ======================================================================
 builder.Services.AddSingleton<IPromptLoader, PromptLoader>();
 builder.Services.AddSingleton<NewsFilterExtractor>();
 builder.Services.AddSingleton<SemanticReranker>();
 builder.Services.AddScoped<DeduperService>();
 builder.Services.AddScoped<CategoryNormalizer>();
 
-// ---------- Logging: slim + signal-only ----------
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IPreferencesService, PreferencesService>();
+builder.Services.AddScoped<IExternalNewsService, ExternalNewsService>();
+builder.Services.AddTransient<IEmailSender, EmailSender>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IEmailDigestService, EmailDigestService>();
+
+// ======================================================================
+// 3) Logging (lean)
+// ======================================================================
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(o =>
 {
@@ -49,41 +65,52 @@ builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
 builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Error);
 builder.Logging.AddFilter("System.Net.Http.HttpClient.newsdata", LogLevel.Error);
 
-// ---------- CORS ----------
+// ======================================================================
+// 4) CORS
+// ======================================================================
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins("http://localhost:5173")
-    .AllowAnyHeader()
-    .AllowAnyMethod()));
+     .AllowAnyHeader()
+     .AllowAnyMethod()));
 
-// ---------- Controllers ----------
+// ======================================================================
+// 5) Controllers / MVC
+// ======================================================================
 builder.Services.AddControllers();
 
-// ---------- EF Core (MySQL) + slow-query interceptor ----------
+// ======================================================================
+// 6) EF Core (MySQL) + dev extras
+// ======================================================================
 builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
 {
     var cs = builder.Configuration.GetConnectionString("Default");
     opt.UseMySql(cs, ServerVersion.AutoDetect(cs));
-
     if (builder.Environment.IsDevelopment())
-        opt.EnableSensitiveDataLogging(); // dev-only: includes parameter values
-
+        opt.EnableSensitiveDataLogging();
 });
 
-// ---------- HttpClient (single named client; no duplicates) ----------
+// ======================================================================
+// 7) HttpClient(s)
+//    NOTE: define the "newsdata" client ONCE. Uses BaseUrl from config.
+// ======================================================================
 builder.Services.AddTransient<LoggingHandler>();
 builder.Services.AddHttpClient("newsdata", (sp, c) =>
 {
     var cfg = sp.GetRequiredService<IConfiguration>().GetSection("NewsData");
-    c.BaseAddress = new Uri(cfg["BaseUrl"]!);
+    var baseUrl = cfg["BaseUrl"] ?? "https://newsdata.io/api/1/"; // sane fallback
+    c.BaseAddress = new Uri(baseUrl);
     c.DefaultRequestHeaders.Accept.Add(
         new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
     c.Timeout = TimeSpan.FromSeconds(15);
 })
 .AddHttpMessageHandler<LoggingHandler>();
 
-// ---------- AuthN / AuthZ (JWT) ----------
-var jwtKey = builder.Configuration["Jwt:Key"]!;
-var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+// ======================================================================
+// 8) AuthN / AuthZ (JWT)
+// ======================================================================
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Missing Jwt:Key");
+var jwtIssuer   = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 builder.Services
@@ -104,20 +131,23 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-
-builder.Services.AddTransient<NewsFeedBackend.IEmailSender, NewsFeedBackend.EmailSender>();
-
+// ======================================================================
+// Build
+// ======================================================================
 var app = builder.Build();
 
-// ---------- DB migrate on startup (dev-friendly) ----------
-
+// ======================================================================
+// 9) DB migrate on startup (dev-friendly)
+// ======================================================================
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 }
 
-// ---------- Pipeline ----------
+// ======================================================================
+// 10) Pipeline
+// ======================================================================
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();

@@ -1,77 +1,58 @@
-using BCrypt.Net;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using Microsoft.IdentityModel.Tokens;
-using NewsFeedBackend.Data;
 using NewsFeedBackend.Models;
-using System.IdentityModel.Tokens.Jwt;
-using System.Security.Claims;
-using System.Text;
+using NewsFeedBackend.Services;
 
 namespace NewsFeedBackend.Controllers;
 
 [ApiController]
 [Route("api/[controller]")]
-public class AuthController(AppDbContext db, IConfiguration cfg) : ControllerBase
+public class AuthController : ControllerBase
 {
+    private readonly IAuthService _auth;
+
+    public AuthController(IAuthService auth) => _auth = auth;
+
     [HttpPost("register")]
-    public async Task<ActionResult<AuthResponse>> Register(RegisterRequest req)
+    public async Task<IActionResult> Register([FromBody] RegisterRequest req, CancellationToken ct)
     {
-        var email = (req.Email ?? "").Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(req.Password))
-            return BadRequest("Email and password are required.");
-
-        var exists = await db.Users.AnyAsync(u => u.Email == email);
-        if (exists) return Conflict("Email already registered.");
-
-        var user = new User
+        try
         {
-            Id = Guid.NewGuid(),
-            Email = email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-            RegistrationDate = DateTime.UtcNow,
-        };
-        db.Users.Add(user);
-        await db.SaveChangesAsync();
-
-        var token = CreateJwt(user, cfg);
-        return new AuthResponse(user.Id, user.Email, token);
+            var res = await _auth.RegisterAsync(req, ct);
+            return Ok(res);
+        }
+        catch (ArgumentException aex)
+        {
+            return BadRequest(aex.Message);
+        }
+        catch (InvalidOperationException iex) // email already registered
+        {
+            return Conflict(iex.Message);
+        }
+        catch (Exception ex)
+        {
+            return Problem(ex.Message);
+        }
     }
 
     [HttpPost("login")]
-    public async Task<ActionResult<AuthResponse>> Login(LoginRequest req)
+    public async Task<IActionResult> Login([FromBody] LoginRequest req, CancellationToken ct)
     {
-        var email = (req.Email ?? "").Trim().ToLowerInvariant();
-        var user = await db.Users.FirstOrDefaultAsync(u => u.Email == email);
-        if (user is null) return Unauthorized("Invalid credentials.");
-
-        var ok = BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash);
-        if (!ok) return Unauthorized("Invalid credentials.");
-
-        var token = CreateJwt(user, cfg);
-        return new AuthResponse(user.Id, user.Email, token);
-    }
-
-    private static string CreateJwt(User user, IConfiguration cfg)
-    {
-        var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(cfg["Jwt:Key"]!));
-        var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
-
-        var claims = new[]
+        try
         {
-            new Claim(JwtRegisteredClaimNames.Sub, user.Id.ToString()),
-            new Claim(JwtRegisteredClaimNames.Email, user.Email),
-            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString())
-        };
-
-        var token = new JwtSecurityToken(
-            issuer: cfg["Jwt:Issuer"],
-            audience: cfg["Jwt:Audience"],
-            claims: claims,
-            expires: DateTime.UtcNow.AddHours(int.Parse(cfg["Jwt:ExpiresHours"] ?? "12")),
-            signingCredentials: creds
-        );
-
-        return new JwtSecurityTokenHandler().WriteToken(token);
+            var res = await _auth.LoginAsync(req, ct);
+            return Ok(res);
+        }
+        catch (ArgumentException aex)
+        {
+            return BadRequest(aex.Message);
+        }
+        catch (UnauthorizedAccessException uex)
+        {
+            return Unauthorized(uex.Message);
+        }
+        catch (Exception ex)
+        {
+            return Problem(ex.Message);
+        }
     }
 }

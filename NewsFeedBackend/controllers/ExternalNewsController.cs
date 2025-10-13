@@ -1,9 +1,6 @@
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using NewsFeedBackend.Data;
-using System.Security.Claims;
-using System.Text;
+using NewsFeedBackend.Services;
 
 namespace NewsFeedBackend.Controllers;
 
@@ -11,64 +8,16 @@ namespace NewsFeedBackend.Controllers;
 [Route("api/[controller]")]
 public class ExternalNewsController : ControllerBase
 {
-    private readonly HttpClient _http;
-    private readonly AppDbContext _db;
-    private readonly string _apiKey;
+    private readonly IExternalNewsService _svc;
 
-    private readonly string _defaultLanguage;
-    private readonly string? _defaultQuery;
-    private readonly string? _defaultCountry;
-    private readonly string? _defaultCategory;
-
-    public ExternalNewsController(IHttpClientFactory httpFactory, IConfiguration cfg, AppDbContext db)
+    public ExternalNewsController(IExternalNewsService svc)
     {
-        _http = httpFactory.CreateClient("newsdata");
-        _db = db;
-        _apiKey = cfg["NewsData:ApiKey"] ?? throw new InvalidOperationException("Missing NewsData:ApiKey");
-
-        _defaultLanguage = cfg["NewsData:DefaultLanguage"] ?? "en";
-        _defaultQuery    = cfg["NewsData:DefaultQuery"];
-        _defaultCountry  = cfg["NewsData:DefaultCountry"];
-        _defaultCategory = cfg["NewsData:DefaultCategory"];
-    }
-
-    private static string? FromDateForWindow(string? timeWindow)
-    {
-        if (string.IsNullOrWhiteSpace(timeWindow)) return null;
-        var now = DateTime.UtcNow;
-        return timeWindow.Trim().ToLowerInvariant() switch
-        {
-            "24h" => now.AddDays(-1).ToString("yyyy-MM-dd"),
-            "7d"  => now.AddDays(-7).ToString("yyyy-MM-dd"),
-            "30d" => now.AddDays(-30).ToString("yyyy-MM-dd"),
-            _     => null
-        };
-    }
-
-    private string BuildUrl(string? q, string? language, string? country, string? category, string? fromDate = null)
-    {
-        var sb = new StringBuilder($"news?apikey={_apiKey}");
-        var lang = string.IsNullOrWhiteSpace(language) ? _defaultLanguage : language;
-
-        sb.Append("&language=").Append(Uri.EscapeDataString(lang));
-        if (!string.IsNullOrWhiteSpace(country))   sb.Append("&country=").Append(Uri.EscapeDataString(country!));
-        if (!string.IsNullOrWhiteSpace(category))  sb.Append("&category=").Append(Uri.EscapeDataString(category!));
-        if (!string.IsNullOrWhiteSpace(q))         sb.Append("&q=").Append(Uri.EscapeDataString(q!));
-        if (!string.IsNullOrWhiteSpace(fromDate))  sb.Append("&from_date=").Append(Uri.EscapeDataString(fromDate!));
-
-        return sb.ToString();
-    }
-
-    private async Task<IActionResult> ProxyAsync(string url, CancellationToken ct)
-    {
-        var resp = await _http.GetAsync(url, ct);
-        var body = await resp.Content.ReadAsStringAsync(ct);
-        return StatusCode((int)resp.StatusCode, body);
+        _svc = svc;
     }
 
     [HttpGet("newsdata")]
     [AllowAnonymous]
-    public Task<IActionResult> Raw(
+    public async Task<IActionResult> Raw(
         [FromQuery] string? q,
         [FromQuery] string? language,
         [FromQuery] string? country,
@@ -76,13 +25,15 @@ public class ExternalNewsController : ControllerBase
         [FromQuery] string? timeWindow,
         CancellationToken ct = default)
     {
-        var finalQ        = string.IsNullOrWhiteSpace(q) ? _defaultQuery : q;
-        var finalLanguage = language ?? _defaultLanguage;
-        var finalCountry  = country  ?? _defaultCountry;
-        var finalCategory = category ?? _defaultCategory;
-        var fromDate      = FromDateForWindow(timeWindow);
-
-        return ProxyAsync(BuildUrl(finalQ, finalLanguage, finalCountry, finalCategory, fromDate), ct);
+        try
+        {
+            var r = await _svc.RawAsync(q, language, country, category, timeWindow, ct);
+            return StatusCode(r.StatusCode, r.Body);
+        }
+        catch (Exception ex)
+        {
+            return Problem(ex.Message);
+        }
     }
 
     [HttpGet("search")]
@@ -93,9 +44,19 @@ public class ExternalNewsController : ControllerBase
         [FromQuery] string? timeWindow = null,
         CancellationToken ct = default)
     {
-        if (string.IsNullOrWhiteSpace(q)) return BadRequest("q required");
-        var fromDate = FromDateForWindow(timeWindow);
-        return await ProxyAsync(BuildUrl(q, language, null, null, fromDate), ct);
+        try
+        {
+            var r = await _svc.SearchAsync(q, language, timeWindow, ct);
+            return StatusCode(r.StatusCode, r.Body);
+        }
+        catch (ArgumentException aex)
+        {
+            return BadRequest(aex.Message);
+        }
+        catch (Exception ex)
+        {
+            return Problem(ex.Message);
+        }
     }
 
     [HttpGet("for-me")]
@@ -106,25 +67,18 @@ public class ExternalNewsController : ControllerBase
         [FromQuery] string? timeWindow = null,
         CancellationToken ct = default)
     {
-        var userIdStr = User.FindFirstValue(ClaimTypes.NameIdentifier) ?? User.FindFirstValue("sub");
-        if (!Guid.TryParse(userIdStr, out var userId)) return Unauthorized("Bad user id in token.");
-
-        var keywords = await _db.UserPreferences
-            .Where(p => p.UserId == userId)
-            .Select(p => p.Keyword)
-            .ToListAsync(ct);
-
-        var finalCategory = string.IsNullOrWhiteSpace(category) ? _defaultCategory : category;
-        var fromDate = FromDateForWindow(timeWindow);
-
-        if (keywords.Count == 0)
+        try
         {
-            var urlDefault = BuildUrl(_defaultQuery, language ?? _defaultLanguage, _defaultCountry, finalCategory, fromDate);
-            return await ProxyAsync(urlDefault, ct);
+            var r = await _svc.ForUserAsync(User, language, category, timeWindow, ct);
+            return StatusCode(r.StatusCode, r.Body);
         }
-
-        var query = string.Join(" OR ", keywords.Select(k => $"\"{k}\""));
-        var url = BuildUrl(query, language, null, finalCategory, fromDate);
-        return await ProxyAsync(url, ct);
+        catch (UnauthorizedAccessException uex)
+        {
+            return Unauthorized(uex.Message);
+        }
+        catch (Exception ex)
+        {
+            return Problem(ex.Message);
+        }
     }
 }
