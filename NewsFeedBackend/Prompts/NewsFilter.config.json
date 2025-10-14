@@ -4,6 +4,6 @@
     { "name": "userQuery", "type": "string", "description": "Free-form user request", "is_required": true }
   ],
   "execution_settings": {
-    "default": { "temperature": 0.2, "top_p": 0.95, "max_tokens": 512 }
+    "default": { "temperature": 0.1, "top_p": 0.8, "max_tokens": 256 }
   }
 }
