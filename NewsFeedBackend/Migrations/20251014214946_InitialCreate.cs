@@ -6,7 +6,7 @@ using Microsoft.EntityFrameworkCore.Migrations;
 namespace NewsFeedBackend.Migrations
 {
     /// <inheritdoc />
-    public partial class InitialGuidSchema : Migration
+    public partial class InitialCreate : Migration
     {
         /// <inheritdoc />
         protected override void Up(MigrationBuilder migrationBuilder)
@@ -36,6 +36,8 @@ namespace NewsFeedBackend.Migrations
                         .Annotation("MySql:CharSet", "utf8mb4"),
                     Score = table.Column<double>(type: "double", nullable: true),
                     RawJson = table.Column<string>(type: "json", nullable: true)
+                        .Annotation("MySql:CharSet", "utf8mb4"),
+                    UrlHash = table.Column<string>(type: "char(64)", nullable: false, computedColumnSql: "lower(hex(sha2(`Url`, 256)))", stored: true)
                         .Annotation("MySql:CharSet", "utf8mb4")
                 },
                 constraints: table =>
@@ -148,9 +150,9 @@ namespace NewsFeedBackend.Migrations
                 column: "PublishedAt");
 
             migrationBuilder.CreateIndex(
-                name: "IX_ExternalArticles_Url",
+                name: "IX_ExternalArticles_UrlHash",
                 table: "ExternalArticles",
-                column: "Url",
+                column: "UrlHash",
                 unique: true);
 
             migrationBuilder.CreateIndex(

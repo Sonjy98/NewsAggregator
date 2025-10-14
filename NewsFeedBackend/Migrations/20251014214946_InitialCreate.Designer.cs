@@ -12,8 +12,8 @@ using NewsFeedBackend.Data;
 namespace NewsFeedBackend.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    [Migration("20251014211007_AddedUrlHashing")]
-    partial class AddedUrlHashing
+    [Migration("20251014214946_InitialCreate")]
+    partial class InitialCreate
     {
         /// <inheritdoc />
         protected override void BuildTargetModel(ModelBuilder modelBuilder)
