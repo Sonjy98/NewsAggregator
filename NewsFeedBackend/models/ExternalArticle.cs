@@ -13,4 +13,6 @@ public sealed class ExternalArticle
     public string? Summary { get; set; }
     public double? Score { get; set; }
     public string? RawJson { get; set; }
+    public string UrlHash { get; private set; } = null!;
+
 }

@@ -27,12 +27,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         var p = mb.Entity<UserPreference>();
         p.HasKey(x => new { x.UserId, x.Keyword });
         p.Property(x => x.Keyword).HasMaxLength(128);
-
         p.HasOne(x => x.User)
          .WithMany()
          .HasForeignKey(x => x.UserId)
          .OnDelete(DeleteBehavior.Cascade);
-
         p.HasIndex(x => x.Keyword);
 
         var s = mb.Entity<UserSetting>();
@@ -43,7 +41,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         s.Property(x => x.DefaultTimeWindow).HasMaxLength(16);
         s.Property(x => x.CreatedAt).HasColumnType("datetime(6)");
         s.Property(x => x.UpdatedAt).HasColumnType("datetime(6)");
-        s.HasOne<NewsFeedBackend.Models.User>()
+        s.HasOne<User>()
          .WithMany()
          .HasForeignKey(x => x.UserId)
          .OnDelete(DeleteBehavior.Cascade);
@@ -51,20 +49,30 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         var a = mb.Entity<ExternalArticle>();
         a.HasKey(x => x.Id);
         a.Property(x => x.Id).HasMaxLength(64);
-        a.Property(x => x.Url).HasMaxLength(1024).IsRequired();
-        a.HasIndex(x => x.Url).IsUnique();
+
+        a.Property(x => x.Url)
+         .HasMaxLength(1024)
+         .IsRequired();
+
+        a.Property<string>("UrlHash")
+         .HasColumnType("char(64)")
+         .HasComputedColumnSql("lower(hex(sha2(`Url`, 256)))", stored: true);
+
+        a.HasIndex("UrlHash").IsUnique();
+
         a.Property(x => x.Language).HasMaxLength(8);
         a.Property(x => x.Category).HasMaxLength(64);
         a.Property(x => x.PublishedAt).HasColumnType("datetime(6)");
         a.Property(x => x.FetchedAt).HasColumnType("datetime(6)");
         a.Property(x => x.RawJson).HasColumnType("json");
+
         a.HasIndex(x => x.PublishedAt);
         a.HasIndex(x => new { x.Language, x.Category, x.PublishedAt });
 
         var ua = mb.Entity<UserArticleAction>();
         ua.HasKey(x => new { x.UserId, x.ArticleId, x.Action });
         ua.Property(x => x.OccurredAt).HasColumnType("datetime(6)");
-        ua.HasOne<NewsFeedBackend.Models.User>()
+        ua.HasOne<User>()
           .WithMany()
           .HasForeignKey(x => x.UserId)
           .OnDelete(DeleteBehavior.Cascade);
