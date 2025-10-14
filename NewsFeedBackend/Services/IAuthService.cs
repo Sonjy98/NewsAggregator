@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using Microsoft.IdentityModel.Tokens;
 using NewsFeedBackend.Data;
 using NewsFeedBackend.Models;
@@ -17,11 +18,18 @@ public interface IAuthService
 
 public sealed class AuthService : IAuthService
 {
+    private const string CodeRequired            = "auth/required";
+    private const string CodeEmailTaken          = "auth/email-taken";
+    private const string CodeInvalidCredentials  = "auth/invalid-credentials";
+    private const int    DefaultJwtExpiresHours  = 12;
+
+    private readonly ILogger<AuthService> _logger;
     private readonly AppDbContext _db;
     private readonly IConfiguration _cfg;
 
-    public AuthService(AppDbContext db, IConfiguration cfg)
+    public AuthService(ILogger<AuthService> logger, AppDbContext db, IConfiguration cfg)
     {
+        _logger = logger;
         _db = db;
         _cfg = cfg;
     }
@@ -29,39 +37,61 @@ public sealed class AuthService : IAuthService
     public async Task<AuthResponse> RegisterAsync(RegisterRequest req, CancellationToken ct)
     {
         var email = (req.Email ?? "").Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(req.Password))
-            throw new ValidationException("Email and password are required.", code: "auth/required");
+        _logger.LogInformation("Auth/Register start email={Email}", email);
 
-        var exists = await _db.Users.AnyAsync(u => u.Email == email, ct);
-        if (exists)
-            throw new ConflictException("Email already registered.", code: "auth/email-taken");
-
-        var user = new User
+        try
         {
-            Id = Guid.NewGuid(),
-            Email = email,
-            PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
-            RegistrationDate = DateTime.UtcNow,
-        };
-        _db.Users.Add(user);
-        await _db.SaveChangesAsync(ct);
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(req.Password))
+                throw new ValidationException("Email and password are required.", code: CodeRequired);
 
-        var token = CreateJwt(user);
-        return new AuthResponse(user.Id, user.Email, token);
+            var exists = await _db.Users.AnyAsync(u => u.Email == email, ct);
+            if (exists)
+                throw new ConflictException("Email already registered.", code: CodeEmailTaken);
+
+            var user = new User
+            {
+                Id = Guid.NewGuid(),
+                Email = email,
+                PasswordHash = BCrypt.Net.BCrypt.HashPassword(req.Password),
+                RegistrationDate = DateTime.UtcNow,
+            };
+            _db.Users.Add(user);
+            await _db.SaveChangesAsync(ct);
+
+            var token = CreateJwt(user);
+            _logger.LogInformation("Auth/Register ok userId={UserId}", user.Id);
+            return new AuthResponse(user.Id, user.Email, token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "Auth/Register failed email={Email}", email);
+            throw;
+        }
     }
 
     public async Task<AuthResponse> LoginAsync(LoginRequest req, CancellationToken ct)
     {
         var email = (req.Email ?? "").Trim().ToLowerInvariant();
-        if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(req.Password))
-            throw new ValidationException("Email and password are required.", code: "auth/required");
+        _logger.LogInformation("Auth/Login start email={Email}", email);
 
-        var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
-        if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
-            throw new UnauthorizedAppException("Invalid credentials.", code: "auth/invalid-credentials");
+        try
+        {
+            if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(req.Password))
+                throw new ValidationException("Email and password are required.", code: CodeRequired);
 
-        var token = CreateJwt(user);
-        return new AuthResponse(user.Id, user.Email, token);
+            var user = await _db.Users.FirstOrDefaultAsync(u => u.Email == email, ct);
+            if (user is null || !BCrypt.Net.BCrypt.Verify(req.Password, user.PasswordHash))
+                throw new UnauthorizedAppException("Invalid credentials.", code: CodeInvalidCredentials);
+
+            var token = CreateJwt(user);
+            _logger.LogInformation("Auth/Login ok userId={UserId}", user.Id);
+            return new AuthResponse(user.Id, user.Email, token);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Auth/Login failed email={Email}", email);
+            throw;
+        }
     }
 
     string CreateJwt(User user)
@@ -70,7 +100,7 @@ public sealed class AuthService : IAuthService
         var key = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(keyStr));
         var creds = new SigningCredentials(key, SecurityAlgorithms.HmacSha256);
 
-        var expiresHours = int.TryParse(_cfg["Jwt:ExpiresHours"], out var h) ? h : 12;
+        var expiresHours = int.TryParse(_cfg["Jwt:ExpiresHours"], out var h) ? h : DefaultJwtExpiresHours;
 
         var claims = new[]
         {

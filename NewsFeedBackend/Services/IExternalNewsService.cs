@@ -1,8 +1,11 @@
 using System.Security.Claims;
+using System.Text;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using NewsFeedBackend.Data;
 using NewsFeedBackend.Errors;
-using System.Text;
+using NewsFeedBackend.Enums;
+using NewsFeedBackend.Extensions;
 
 namespace NewsFeedBackend.Services;
 
@@ -17,27 +20,34 @@ public interface IExternalNewsService
 
 public sealed class ExternalNewsService : IExternalNewsService
 {
+    private const string ClientName = "newsdata";
+    private const string CodeQRequired = "news/q-required";
+    private const string CodeUpstreamError = "news/upstream-error";
+
+    private readonly ILogger<ExternalNewsService> _logger;
     private readonly HttpClient _http;
     private readonly AppDbContext _db;
     private readonly ICurrentUserService _currentUser;
-    private readonly string _apiKey;
 
+    private readonly string _apiKey;
     private readonly string _defaultLanguage;
     private readonly string? _defaultQuery;
     private readonly string? _defaultCountry;
     private readonly string? _defaultCategory;
 
     public ExternalNewsService(
+        ILogger<ExternalNewsService> logger,
         IHttpClientFactory httpFactory,
         IConfiguration cfg,
         AppDbContext db,
         ICurrentUserService currentUser)
     {
-        _http = httpFactory.CreateClient("newsdata");
+        _logger = logger;
+        _http = httpFactory.CreateClient(ClientName);
         _db = db;
         _currentUser = currentUser;
 
-        _apiKey = cfg["NewsData:ApiKey"] ?? throw new InvalidOperationException("Missing NewsData:ApiKey");
+        _apiKey          = cfg["NewsData:ApiKey"]          ?? throw new InvalidOperationException("Missing NewsData:ApiKey");
         _defaultLanguage = cfg["NewsData:DefaultLanguage"] ?? "en";
         _defaultQuery    = cfg["NewsData:DefaultQuery"];
         _defaultCountry  = cfg["NewsData:DefaultCountry"];
@@ -46,6 +56,9 @@ public sealed class ExternalNewsService : IExternalNewsService
 
     public Task<ProxyResult> RawAsync(string? q, string? language, string? country, string? category, string? timeWindow, CancellationToken ct)
     {
+        _logger.LogInformation("News/Raw start q='{Q}' lang='{Lang}' country='{Country}' category='{Category}' window='{Win}'",
+            q, language, country, category, timeWindow);
+
         var finalQ        = string.IsNullOrWhiteSpace(q) ? _defaultQuery : q;
         var finalLanguage = language ?? _defaultLanguage;
         var finalCountry  = country  ?? _defaultCountry;
@@ -58,8 +71,10 @@ public sealed class ExternalNewsService : IExternalNewsService
 
     public Task<ProxyResult> SearchAsync(string q, string language, string? timeWindow, CancellationToken ct)
     {
+        _logger.LogInformation("News/Search start q='{Q}' lang='{Lang}' window='{Win}'", q, language, timeWindow);
+
         if (string.IsNullOrWhiteSpace(q))
-            throw new ValidationException("q required", code: "news/q-required");
+            throw new ValidationException("q required", code: CodeQRequired);
 
         var fromDate = FromDateForWindow(timeWindow);
         var url = BuildUrl(q, language, country: null, category: null, fromDate);
@@ -69,6 +84,8 @@ public sealed class ExternalNewsService : IExternalNewsService
     public async Task<ProxyResult> ForUserAsync(ClaimsPrincipal user, string? language, string? category, string? timeWindow, CancellationToken ct)
     {
         var userId = _currentUser.GetUserId(user);
+        _logger.LogInformation("News/ForUser start user={UserId} lang='{Lang}' category='{Category}' window='{Win}'",
+            userId, language, category, timeWindow);
 
         var keywords = await _db.UserPreferences
             .Where(p => p.UserId == userId)
@@ -81,27 +98,22 @@ public sealed class ExternalNewsService : IExternalNewsService
 
         if (keywords.Count == 0)
         {
+            _logger.LogInformation("News/ForUser user={UserId} no-keywords → default feed", userId);
             var urlDefault = BuildUrl(_defaultQuery, lang, _defaultCountry, finalCategory, fromDate);
             return await ProxyAsync(urlDefault, ct);
         }
 
         var query = string.Join(" OR ", keywords.Select(k => $"\"{k}\""));
+        _logger.LogInformation("News/ForUser user={UserId} kwCount={Count}", userId, keywords.Count);
+
         var url = BuildUrl(query, lang, country: null, finalCategory, fromDate);
         return await ProxyAsync(url, ct);
     }
 
-    // -------- internals --------
     static string? FromDateForWindow(string? timeWindow)
     {
-        if (string.IsNullOrWhiteSpace(timeWindow)) return null;
-        var now = DateTime.UtcNow;
-        return timeWindow.Trim().ToLowerInvariant() switch
-        {
-            "24h" => now.AddDays(-1).ToString("yyyy-MM-dd"),
-            "7d"  => now.AddDays(-7).ToString("yyyy-MM-dd"),
-            "30d" => now.AddDays(-30).ToString("yyyy-MM-dd"),
-            _     => null
-        };
+        if (!TimeWindowExtensions.TryParse(timeWindow, out var w)) return null;
+        return w.ToFromDate();
     }
 
     string BuildUrl(string? q, string? language, string? country, string? category, string? fromDate = null)
@@ -120,12 +132,32 @@ public sealed class ExternalNewsService : IExternalNewsService
 
     async Task<ProxyResult> ProxyAsync(string url, CancellationToken ct)
     {
-        var resp = await _http.GetAsync(url, ct);
-        var body = await resp.Content.ReadAsStringAsync(ct);
+        try
+        {
+            var resp = await _http.GetAsync(url, ct);
+            var body = await resp.Content.ReadAsStringAsync(ct);
 
-        if (!resp.IsSuccessStatusCode)
-            throw new ExternalServiceException($"News API error {(int)resp.StatusCode}: {body}", code: "news/upstream-error");
+            if (!resp.IsSuccessStatusCode)
+            {
+                _logger.LogWarning("News/Proxy upstream error status={Status} len={Len}", (int)resp.StatusCode, body?.Length ?? 0);
+                throw new ExternalServiceException($"News API error {(int)resp.StatusCode}: {TrimForLog(body)}", code: CodeUpstreamError);
+            }
 
-        return new ProxyResult((int)resp.StatusCode, body);
+            _logger.LogInformation("News/Proxy ok status={Status} len={Len}", (int)resp.StatusCode, body?.Length ?? 0);
+            return new ProxyResult((int)resp.StatusCode, body);
+        }
+        catch (TaskCanceledException ex)
+        {
+            _logger.LogWarning(ex, "News/Proxy timeout");
+            throw;
+        }
+        catch (HttpRequestException ex)
+        {
+            _logger.LogError(ex, "News/Proxy transport error");
+            throw;
+        }
     }
+
+    static string TrimForLog(string? s)
+        => string.IsNullOrEmpty(s) ? "" : (s.Length <= 512 ? s : s[..512] + "…");
 }

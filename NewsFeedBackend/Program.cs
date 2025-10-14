@@ -30,6 +30,19 @@ builder.Services.AddSingleton<IChatCompletionService>(
     _ => new GoogleAIGeminiChatCompletionService(chatModel, googleKey));
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
     _ => new GoogleAIEmbeddingGenerator(embModel, googleKey));
+
+
+builder.Services.AddSingleton(sp =>
+{
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    var k = Kernel.CreateBuilder();
+
+    k.AddGoogleAIGeminiChatCompletion(
+        modelId: cfg["GoogleAi:ChatModel"] ?? "gemini-2.5-pro",
+        apiKey : cfg["GoogleAi:ApiKey"]!);
+
+    return k.Build();
+});
 #pragma warning restore SKEXP0070
 
 builder.Services.AddMemoryCache();
@@ -37,7 +50,6 @@ builder.Services.AddMemoryCache();
 // ======================================================================
 // 2) App Services (DI)
 // ======================================================================
-builder.Services.AddSingleton<IPromptLoader, PromptLoader>();
 builder.Services.AddSingleton<NewsFilterExtractor>();
 builder.Services.AddSingleton<SemanticReranker>();
 builder.Services.AddScoped<DeduperService>();
@@ -149,39 +161,17 @@ builder.Services.AddAuthorization();
 var app = builder.Build();
 
 // ======================================================================
-// 9) Global minimal JSON error handler
-//    Ensures FE always gets { status, code, message } for unhandled errors
-//    (Your controllers using ApiControllerBase.Safe(...) will still
-//     produce the same minimal shape for handled AppException cases.)
+// 9) Swagger (always on, proxied under /api/swagger)
 // ======================================================================
-app.UseExceptionHandler(errorApp =>
+app.UseSwagger(c =>
 {
-    errorApp.Run(async context =>
-    {
-        context.Response.ContentType = "application/json";
-        var feature = context.Features.Get<IExceptionHandlerPathFeature>();
-        var ex = feature?.Error;
-
-        var logger = context.RequestServices.GetRequiredService<ILoggerFactory>()
-                                            .CreateLogger("GlobalException");
-        if (ex != null) logger.LogError(ex, "Unhandled exception at {Path}", feature?.Path);
-
-        var status = 500;
-        var code = "internal/unexpected";
-        var message = "Something went wrong.";
-
-        if (ex is AppException aex)
-        {
-            status = aex.StatusCode;
-            code = aex.Code ?? aex.GetType().Name;
-            message = aex.Message;
-        }
-
-        context.Response.StatusCode = status;
-        await context.Response.WriteAsJsonAsync(new { status, code, message });
-    });
+    c.RouteTemplate = "api/swagger/{documentName}/swagger.json";
 });
-
+app.UseSwaggerUI(c =>
+{
+    c.RoutePrefix = "api/swagger";
+    c.SwaggerEndpoint("/api/swagger/v1/swagger.json", "NewsFeed API v1");
+});
 
 // ======================================================================
 // 10) DB migrate on startup (dev-friendly)
