@@ -51,7 +51,6 @@ builder.Services.AddMemoryCache();
 // 2) App Services (DI)
 // ======================================================================
 builder.Services.AddSingleton<NewsFilterExtractor>();
-builder.Services.AddSingleton<SemanticReranker>();
 builder.Services.AddScoped<DeduperService>();
 builder.Services.AddScoped<CategoryNormalizer>();
 

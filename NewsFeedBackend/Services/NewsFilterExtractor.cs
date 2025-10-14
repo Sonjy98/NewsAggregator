@@ -1,6 +1,6 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel;
 
 namespace NewsFeedBackend.Services;
 
@@ -14,13 +14,17 @@ public sealed record NewsFilterSpec(
 
 public sealed class NewsFilterExtractor
 {
-    private readonly IChatCompletionService _chat;
-    private readonly IPromptLoader _prompts;
+    private readonly Kernel _kernel;
+    private readonly IWebHostEnvironment _env;
+    private readonly KernelFunction _func;
 
-    public NewsFilterExtractor(IChatCompletionService chat, IPromptLoader prompts)
+    public NewsFilterExtractor(Kernel kernel, IWebHostEnvironment env)
     {
-        _chat = chat;
-        _prompts = prompts;
+        _kernel = kernel;
+        _env = env;
+        var promptPath = Path.Combine(_env.ContentRootPath, "Prompts", "NewsFilter.prompt.txt");
+        var prompt = File.ReadAllText(promptPath);
+        _func = KernelFunctionFactory.CreateFromPrompt(prompt);
     }
 
     public async Task<NewsFilterSpec> ExtractAsync(string userQuery, CancellationToken ct = default)
@@ -28,15 +32,9 @@ public sealed class NewsFilterExtractor
         if (string.IsNullOrWhiteSpace(userQuery))
             throw new ArgumentException("Query cannot be empty.", nameof(userQuery));
 
-        var system = _prompts.Load("NewsFilter");
-        var user = $"User request: {userQuery}";
-
-        var history = new ChatHistory();
-        history.AddSystemMessage(system);
-        history.AddUserMessage(user);
-
-        var reply = await _chat.GetChatMessageContentAsync(history, cancellationToken: ct);
-        var text = (reply.Content ?? string.Empty).Trim();
+        var vars = new KernelArguments { ["userQuery"] = userQuery };
+        var result = await _kernel.InvokeAsync(_func, vars, ct);
+        var text = (result.GetValue<string>() ?? string.Empty).Trim();
 
         var json = ExtractFirstJsonObject(text)
                    ?? throw new InvalidOperationException("Model did not return JSON.");
@@ -45,7 +43,7 @@ public sealed class NewsFilterExtractor
         var root = doc.RootElement;
 
         var include          = GetStringArray(root, "includeKeywords");
-        var exclude          = GetStringArray(root, "excludeKeywords"); // no avoidTopics
+        var exclude          = GetStringArray(root, "excludeKeywords");
         var preferredSources = GetStringArray(root, "preferredSources");
         var category         = GetString(root, "category");
         var timeWindow       = NormalizeWindow(GetString(root, "timeWindow"));
@@ -65,14 +63,12 @@ public sealed class NewsFilterExtractor
     }
 
     static string[] Normalize(string[]? arr) =>
-        arr is null
-            ? Array.Empty<string>()
-            : arr
-                .Select(s => s?.Trim())
-                .Where(s => !string.IsNullOrWhiteSpace(s))
-                .Select(s => s!)
-                .Distinct(StringComparer.OrdinalIgnoreCase)
-                .ToArray();
+        arr is null ? Array.Empty<string>() :
+        arr.Select(s => s?.Trim())
+           .Where(s => !string.IsNullOrWhiteSpace(s))
+           .Select(s => s!)
+           .Distinct(StringComparer.OrdinalIgnoreCase)
+           .ToArray();
 
     static string? NullIfEmpty(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null : s.Trim();

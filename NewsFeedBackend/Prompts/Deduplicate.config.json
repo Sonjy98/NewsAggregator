@@ -1,0 +1,9 @@
+{
+  "template_format": "handlebars",
+  "input_variables": [
+    { "name": "articlesJson", "type": "string", "description": "JSON string of [{ url, title, source }]", "is_required": true }
+  ],
+  "execution_settings": {
+    "default": { "temperature": 0.1, "max_tokens": 256 }
+  }
+}

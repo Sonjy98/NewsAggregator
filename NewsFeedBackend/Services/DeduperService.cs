@@ -1,5 +1,5 @@
 using System.Text.Json;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel;
 
 namespace NewsFeedBackend.Services;
 
@@ -9,33 +9,36 @@ public sealed record DeduperResult(DeduperGroup[] Groups);
 
 public sealed class DeduperService
 {
-    private readonly IChatCompletionService _chat;
-    private readonly IPromptLoader _prompts;
+    private readonly Kernel _kernel;
+    private readonly IWebHostEnvironment _env;
+    private readonly KernelFunction _func;
 
-    public DeduperService(IChatCompletionService chat, IPromptLoader prompts)
+    public DeduperService(Kernel kernel, IWebHostEnvironment env)
     {
-        _chat = chat;
-        _prompts = prompts;
+        _kernel = kernel;
+        _env = env;
+        var promptPath = Path.Combine(_env.ContentRootPath, "Prompts", "Deduplicate.prompt.txt");
+        var prompt = File.ReadAllText(promptPath);
+        _func = KernelFunctionFactory.CreateFromPrompt(prompt);
     }
 
     public async Task<DeduperResult> DeduplicateAsync(IReadOnlyList<DeduperArticle> articles, CancellationToken ct = default)
     {
         if (articles.Count == 0) return new DeduperResult(Array.Empty<DeduperGroup>());
 
-        var system = _prompts.Load("Deduplicate");
-        var user = JsonSerializer.Serialize(new { articles });
+        // Project to lower-case field names to match the prompt wording
+        var payload = articles.Select(a => new { url = a.Url, title = a.Title, source = a.Source }).ToList();
+        var articlesJson = JsonSerializer.Serialize(payload);
 
-        var history = new ChatHistory();
-        history.AddSystemMessage(system);
-        history.AddUserMessage(user);
-
-        var reply = await _chat.GetChatMessageContentAsync(history, cancellationToken: ct);
-        var text = (reply.Content ?? string.Empty).Replace("```json", "").Replace("```", "").Trim();
+        var vars = new KernelArguments { ["articlesJson"] = articlesJson };
+        var res = await _kernel.InvokeAsync(_func, vars, ct);
+        var text = (res.GetValue<string>() ?? string.Empty).Replace("```json", "").Replace("```", "").Trim();
 
         var result = JsonSerializer.Deserialize<DeduperResult>(text, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         });
+
         return result ?? new DeduperResult(Array.Empty<DeduperGroup>());
     }
 }

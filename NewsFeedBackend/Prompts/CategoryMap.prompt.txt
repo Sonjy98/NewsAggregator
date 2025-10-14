@@ -1,7 +1,7 @@
 Map a free-form category phrase to one of:
 technology, business, science, world, sports, entertainment, health
-If none fits, return null.
 
-STRICT JSON ONLY:
-{ "Category": "technology" }  OR  { "Category": null }
-Minify output. No markdown.
+Input: {{rawCategory}}
+
+Return STRICT JSON ONLY, minified:
+{ "category": "technology" }  OR  { "category": null }

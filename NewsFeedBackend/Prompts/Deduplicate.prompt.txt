@@ -1,13 +1,14 @@
-Given a list of articles that may be duplicates (same story from multiple sites),
-group near-duplicates and pick a canonical representative per group.
+Given a list of articles (JSON below as `articles`), group near-duplicates (same/very similar story) and pick a canonical representative per group.
 
-Input: articles: [{ url, title, source }]
-Output STRICT JSON ONLY:
+articles: {{articlesJson}}
+
+Return STRICT JSON ONLY, minified:
 {
   "groups": [
-    { "canonicalUrl": "...", "members": ["...","...", "..."], "reason": "same story/near-identical title" },
-    ...
+    { "canonicalUrl": "...", "members": ["...","...", "..."], "reason": "same story/near-identical title" }
   ]
 }
-- Every input url must appear in exactly one group's "members".
-- Minify output. No markdown.
+
+Rules:
+- Every input article.url must appear in exactly one group's "members".
+- Keep reasons short.
