@@ -5,7 +5,6 @@ User request: {{$userQuery}}
 Return ONLY a single minified JSON object with keys:
 - includeKeywords: string[]
 - excludeKeywords: string[] (optional)
-- preferredSources: string[] (optional)
 - category: string (optional; one of: technology, business, science, world, sports, entertainment, health)
 - timeWindow: string (optional; one of: 24h, 7d, 30d)
 
@@ -23,4 +22,4 @@ User: Tech & AI, no crypto, last 7 days
 Output: {"includeKeywords":["tech","ai"],"excludeKeywords":["crypto","cryptocurrency","bitcoin","ethereum"],"category":"technology","timeWindow":"7d"}
 
 User: US politics, exclude Fox News
-Output: {"includeKeywords":["US politics"],"preferredSources":[],"excludeKeywords":["Fox News"],"category":null,"timeWindow":null}
+Output: {"includeKeywords":["US politics"],"excludeKeywords":["Fox News"],"category":null,"timeWindow":null}
