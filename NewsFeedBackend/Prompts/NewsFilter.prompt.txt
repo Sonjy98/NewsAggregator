@@ -1,11 +1,10 @@
 You convert a user's free-text news preference into STRICT JSON ONLY.
 
-User request: {{userQuery}}
+User request: {{$userQuery}}
 
 Return ONLY a single minified JSON object with keys:
 - includeKeywords: string[]
 - excludeKeywords: string[] (optional)
-- preferredSources: string[] (optional)
 - category: string (optional; one of: technology, business, science, world, sports, entertainment, health)
 - timeWindow: string (optional; one of: 24h, 7d, 30d)
 

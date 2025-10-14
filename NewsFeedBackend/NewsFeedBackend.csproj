@@ -16,7 +16,7 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="8.0.13" PrivateAssets="all" />
     <PackageReference Include="Microsoft.EntityFrameworkCore.Tools" Version="8.0.13" PrivateAssets="all" />
     <PackageReference Include="Microsoft.SemanticKernel" Version="1.65.0-alpha" />
-    <PackageReference Include="Microsoft.SemanticKernel.Connectors.Google" Version="1.65.0-alpha" />
+    <PackageReference Include="Microsoft.SemanticKernel.Connectors.Google" Version="1.66.0-alpha" />
     <PackageReference Include="Pomelo.EntityFrameworkCore.MySql" Version="8.0.3" />
     <Content Update="Prompts\**\*">
     <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

@@ -1,6 +1,8 @@
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.ChatCompletion;
 
 namespace NewsFeedBackend.Services;
 
@@ -14,17 +16,25 @@ public sealed record NewsFilterSpec(
 
 public sealed class NewsFilterExtractor
 {
-    private readonly Kernel _kernel;
+    private readonly IChatCompletionService _chat;
     private readonly IWebHostEnvironment _env;
-    private readonly KernelFunction _func;
+    private readonly string _promptTemplate;
+    private readonly PromptCfg _cfg;
 
-    public NewsFilterExtractor(Kernel kernel, IWebHostEnvironment env)
+    public NewsFilterExtractor(IChatCompletionService chat, IWebHostEnvironment env)
     {
-        _kernel = kernel;
-        _env = env;
-        var promptPath = Path.Combine(_env.ContentRootPath, "Prompts", "NewsFilter.prompt.txt");
-        var prompt = File.ReadAllText(promptPath);
-        _func = KernelFunctionFactory.CreateFromPrompt(prompt);
+        _chat = chat;
+        _env  = env;
+
+        var promptsDir = Path.Combine(_env.ContentRootPath, "Prompts");
+        var promptPath = Path.Combine(promptsDir, "NewsFilter.prompt.txt");
+        var configPath = Path.Combine(promptsDir, "NewsFilter.config.json");
+
+        if (!File.Exists(promptPath))
+            throw new FileNotFoundException($"Prompt file not found: {promptPath}");
+
+        _promptTemplate = File.ReadAllText(promptPath);
+        _cfg = PromptCfg.LoadIfExists(configPath);
     }
 
     public async Task<NewsFilterSpec> ExtractAsync(string userQuery, CancellationToken ct = default)
@@ -32,9 +42,17 @@ public sealed class NewsFilterExtractor
         if (string.IsNullOrWhiteSpace(userQuery))
             throw new ArgumentException("Query cannot be empty.", nameof(userQuery));
 
-        var vars = new KernelArguments { ["userQuery"] = userQuery };
-        var result = await _kernel.InvokeAsync(_func, vars, ct);
-        var text = (result.GetValue<string>() ?? string.Empty).Trim();
+        var prompt = _promptTemplate.Replace("{{userQuery}}", userQuery, StringComparison.Ordinal);
+
+        var exec = _cfg.ToExecutionSettings(defaultTemp: 0.2, defaultTopP: 0.9, defaultMaxTokens: 256);
+
+        var reply = await _chat.GetChatMessageContentAsync(
+            prompt,
+            exec,
+            kernel: null,
+            cancellationToken: ct
+        );
+        var text  = (reply.Content ?? string.Empty).Trim();
 
         var json = ExtractFirstJsonObject(text)
                    ?? throw new InvalidOperationException("Model did not return JSON.");
@@ -63,12 +81,13 @@ public sealed class NewsFilterExtractor
     }
 
     static string[] Normalize(string[]? arr) =>
-        arr is null ? Array.Empty<string>() :
-        arr.Select(s => s?.Trim())
-           .Where(s => !string.IsNullOrWhiteSpace(s))
-           .Select(s => s!)
-           .Distinct(StringComparer.OrdinalIgnoreCase)
-           .ToArray();
+        arr is null
+            ? Array.Empty<string>()
+            : arr.Select(s => s?.Trim())
+                 .Where(s => !string.IsNullOrWhiteSpace(s))
+                 .Select(s => s!)
+                 .Distinct(StringComparer.OrdinalIgnoreCase)
+                 .ToArray();
 
     static string? NullIfEmpty(string? s) =>
         string.IsNullOrWhiteSpace(s) ? null : s.Trim();
@@ -79,9 +98,9 @@ public sealed class NewsFilterExtractor
         var t = w.Trim().ToLowerInvariant();
         return t switch
         {
-            "24h" or "1d" or "day" => "24h",
-            "7d" or "week" or "7days" => "7d",
-            "30d" or "month" => "30d",
+            "24h" or "1d" or "day"     => "24h",
+            "7d"  or "week" or "7days" => "7d",
+            "30d" or "month"           => "30d",
             _ => null
         };
     }
@@ -107,12 +126,12 @@ public sealed class NewsFilterExtractor
 
     static string[] GetStringArray(JsonElement root, string name)
     {
-        static string[] ReadArray(JsonElement e)
-            => e.ValueKind == JsonValueKind.Array
+        static string[] ReadArray(JsonElement e) =>
+            e.ValueKind == JsonValueKind.Array
                 ? e.EnumerateArray()
-                    .Where(x => x.ValueKind == JsonValueKind.String)
-                    .Select(x => x.GetString() ?? string.Empty)
-                    .ToArray()
+                   .Where(x => x.ValueKind == JsonValueKind.String)
+                   .Select(x => x.GetString() ?? string.Empty)
+                   .ToArray()
                 : Array.Empty<string>();
 
         if (root.TryGetProperty(name, out var v))
