@@ -16,6 +16,11 @@ Rules:
 - If unsure, leave fields null/empty rather than guessing.
 - If the user mentions a period like "last week", "past 24 hours", "this month", translate to timeWindow: "7d", "24h", or "30d".
 
+HARD RULES:
+- Do NOT invent excludeKeywords. Only include excludeKeywords if the user explicitly asks to exclude something (e.g., “no X”, “exclude X”, “without X”, “not X”, “-X”).
+- If the user doesn’t explicitly exclude anything, set excludeKeywords to [] (empty array).
+- Do not infer people/companies to exclude unless explicitly named.
+
 Examples:
 
 User: Tech & AI, no crypto, last 7 days
