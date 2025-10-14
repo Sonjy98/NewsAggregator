@@ -35,17 +35,21 @@ public abstract class ApiControllerBase : ControllerBase
             }
             catch (AppException ex)
             {
-                Logger.LogWarning(ex, "Handled {ErrorType} in {Operation}", ex.GetType().Name, operation);
+                Logger.LogWarning(ex, "{Operation} failed code={Code}", operation, ex.Code);
+
+                var status = ex.StatusCode;
+                var code   = string.IsNullOrWhiteSpace(ex.Code) ? "app/error" : ex.Code!;
+                var detail = SafeDetailFor(code);
+
                 var problem = new ProblemDetails
                 {
-                    Title  = ex.GetType().Name,
-                    Detail = ex.Message,
-                    Status = ex.StatusCode
+                    Title  = code,
+                    Detail = detail,
+                    Status = status
                 };
-                if (!string.IsNullOrWhiteSpace(ex.Code))
-                    problem.Extensions["code"] = ex.Code;
+                problem.Extensions["operation"] = operation;
 
-                return StatusCode(ex.StatusCode, problem);
+                return StatusCode(status, problem);
             }
             catch (DbUpdateException ex)
             {
@@ -55,12 +59,12 @@ public abstract class ApiControllerBase : ControllerBase
             catch (HttpRequestException ex)
             {
                 Logger.LogError(ex, "Upstream HTTP error in {Operation}", operation);
-                return Problem(statusCode: 502, title: "Upstream service error", detail: ex.Message);
+                return Problem(statusCode: 502, title: "Upstream service error", detail: "A dependency failed.");
             }
             catch (TaskCanceledException ex)
             {
                 Logger.LogWarning(ex, "Timeout in {Operation}", operation);
-                return Problem(statusCode: 504, title: "Operation timed out", detail: ex.Message);
+                return Problem(statusCode: 504, title: "Operation timed out", detail: "Request took too long.");
             }
             catch (Exception ex)
             {
@@ -69,5 +73,13 @@ public abstract class ApiControllerBase : ControllerBase
             }
             finally { sw.Stop(); }
         }
+    }
+    private static string SafeDetailFor(string code)
+    {
+        if (code.StartsWith("auth/",  StringComparison.OrdinalIgnoreCase)) return "Authentication failed.";
+        if (code.StartsWith("prefs/", StringComparison.OrdinalIgnoreCase)) return "Preference operation failed.";
+        if (code.StartsWith("news/",  StringComparison.OrdinalIgnoreCase)) return "Upstream news service failed.";
+        if (code.StartsWith("email/", StringComparison.OrdinalIgnoreCase)) return "Email operation failed.";
+        return "Request failed.";
     }
 }

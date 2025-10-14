@@ -162,14 +162,17 @@ var app = builder.Build();
 // ======================================================================
 // 9) Swagger (always on, proxied under /api/swagger)
 // ======================================================================
-app.UseSwagger(c =>
+app.UseSwagger(); 
+
+app.UseSwaggerUI(c =>
 {
-    c.RouteTemplate = "api/swagger/{documentName}/swagger.json";
+    c.RoutePrefix = "swagger";
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "NewsFeed API v1");
 });
 app.UseSwaggerUI(c =>
 {
     c.RoutePrefix = "api/swagger";
-    c.SwaggerEndpoint("/api/swagger/v1/swagger.json", "NewsFeed API v1");
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "NewsFeed API v1");
 });
 
 // ======================================================================
@@ -184,11 +187,6 @@ using (var scope = app.Services.CreateScope())
 // ======================================================================
 // 11) Pipeline
 // ======================================================================
-if (app.Environment.IsDevelopment())
-{
-    app.UseSwagger();
-    app.UseSwaggerUI();
-}
 
 app.UseHttpLogging(); 
 
