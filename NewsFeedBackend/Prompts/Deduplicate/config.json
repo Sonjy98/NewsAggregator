@@ -1,0 +1,12 @@
+{
+  "name": "dedupe",
+  "description": "Group duplicate/similar articles",
+  "template_format": "handlebars",
+  "input_variables": [
+    { "name": "articlesJson", "type": "string", "is_required": true }
+  ],
+  "execution_settings": {
+    "default": { "temperature": 0.2, "topP": 0.9, "maxOutputTokens": 512, "response_mime_type": "application/json" },
+    "google":  { "temperature": 0.2, "topP": 0.9, "maxOutputTokens": 512, "response_mime_type": "application/json" }
+  }
+}

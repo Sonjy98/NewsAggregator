@@ -1,6 +1,6 @@
 Given a list of articles (JSON below as `articles`), group near-duplicates (same/very similar story) and pick a canonical representative per group.
 
-articles: {{$articlesJson}}
+articles: {{articlesJson}}
 
 Return STRICT JSON ONLY, minified:
 {

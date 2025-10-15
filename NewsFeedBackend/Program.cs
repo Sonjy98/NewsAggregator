@@ -14,6 +14,7 @@ using NewsFeedBackend.Errors;
 using NewsFeedBackend.Http;
 using NewsFeedBackend.Services;
 using Microsoft.AspNetCore.HttpLogging;
+using Microsoft.SemanticKernel.PromptTemplates.Handlebars;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -39,18 +40,20 @@ builder.Services.AddSingleton(sp =>
 
     k.AddGoogleAIGeminiChatCompletion(
         modelId: cfg["GoogleAi:ChatModel"] ?? "gemini-2.5-pro",
-        apiKey : cfg["GoogleAi:ApiKey"]!);
+        apiKey : cfg["GoogleAi:ApiKey"]!,
+        serviceId: "google");
 
     return k.Build();
 });
 #pragma warning restore SKEXP0070
 
+builder.Services.AddSingleton<HandlebarsPromptTemplateFactory>();
 builder.Services.AddMemoryCache();
 
 // ======================================================================
 // 2) App Services (DI)
 // ======================================================================
-builder.Services.AddSingleton<NewsFilterExtractor>();
+builder.Services.AddScoped<NewsFeedBackend.Services.NewsFilterExtractor>();
 builder.Services.AddScoped<DeduperService>();
 builder.Services.AddScoped<CategoryNormalizer>();
 

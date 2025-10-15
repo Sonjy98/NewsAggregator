@@ -2,7 +2,8 @@ using System.Text.Json;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.PromptTemplates;
+using Microsoft.SemanticKernel.PromptTemplates.Handlebars;
 
 namespace NewsFeedBackend.Services;
 
@@ -16,25 +17,18 @@ public sealed record NewsFilterSpec(
 
 public sealed class NewsFilterExtractor
 {
-    private readonly IChatCompletionService _chat;
-    private readonly IWebHostEnvironment _env;
-    private readonly string _promptTemplate;
-    private readonly PromptCfg _cfg;
+    private readonly Kernel _kernel;
+    private readonly KernelFunction _func;
 
-    public NewsFilterExtractor(IChatCompletionService chat, IWebHostEnvironment env)
+    public NewsFilterExtractor(Kernel kernel, IWebHostEnvironment env)
     {
-        _chat = chat;
-        _env  = env;
+        _kernel = kernel;
 
-        var promptsDir = Path.Combine(_env.ContentRootPath, "Prompts");
-        var promptPath = Path.Combine(promptsDir, "NewsFilter.prompt.txt");
-        var configPath = Path.Combine(promptsDir, "NewsFilter.config.json");
+        var dir = Path.Combine(env.ContentRootPath, "Prompts", "NewsFilter");
+        if (!Directory.Exists(dir))
+            throw new DirectoryNotFoundException($"Prompt directory not found: {dir}");
 
-        if (!File.Exists(promptPath))
-            throw new FileNotFoundException($"Prompt file not found: {promptPath}");
-
-        _promptTemplate = File.ReadAllText(promptPath);
-        _cfg = PromptCfg.LoadIfExists(configPath);
+        _func = LoadFunctionFromPromptDir(dir);
     }
 
     public async Task<NewsFilterSpec> ExtractAsync(string userQuery, CancellationToken ct = default)
@@ -42,17 +36,11 @@ public sealed class NewsFilterExtractor
         if (string.IsNullOrWhiteSpace(userQuery))
             throw new ArgumentException("Query cannot be empty.", nameof(userQuery));
 
-        var prompt = _promptTemplate.Replace("{{userQuery}}", userQuery, StringComparison.Ordinal);
+        var args = new KernelArguments { ["userQuery"] = userQuery };
 
-        var exec = _cfg.ToExecutionSettings(defaultTemp: 0.2, defaultTopP: 0.9, defaultMaxTokens: 256);
-
-        var reply = await _chat.GetChatMessageContentAsync(
-            prompt,
-            exec,
-            kernel: null,
-            cancellationToken: ct
-        );
-        var text  = (reply.Content ?? string.Empty).Trim();
+        // Execution settings in config.json are applied automatically
+        var result = await _kernel.InvokeAsync(_func, args, ct);
+        var text   = (result.GetValue<string>() ?? string.Empty).Trim();
 
         var json = ExtractFirstJsonObject(text)
                    ?? throw new InvalidOperationException("Model did not return JSON.");
@@ -60,22 +48,18 @@ public sealed class NewsFilterExtractor
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
 
-        var include          = GetStringArray(root, "includeKeywords");
-        var exclude          = GetStringArray(root, "excludeKeywords");
-        var preferredSources = GetStringArray(root, "preferredSources");
-        var category         = GetString(root, "category");
-        var timeWindow       = NormalizeWindow(GetString(root, "timeWindow"));
+        var include    = GetStringArray(root, "includeKeywords");
+        var exclude    = GetStringArray(root, "excludeKeywords");
+        var category   = GetString(root, "category");
+        var timeWindow = NormalizeWindow(GetString(root, "timeWindow"));
 
         var spec = new NewsFilterSpec(
             IncludeKeywords  : Normalize(include),
             ExcludeKeywords  : Normalize(exclude),
-            PreferredSources : Normalize(preferredSources),
+            PreferredSources : null, // not used
             Category         : NullIfEmpty(category),
             TimeWindow       : timeWindow
         );
-
-        var filteredExcludes = FilterExcludes(userQuery, spec.ExcludeKeywords ?? Array.Empty<string>());
-        spec = spec with { ExcludeKeywords = filteredExcludes.Length == 0 ? null : filteredExcludes };
 
         if (spec.IncludeKeywords is null)
             throw new InvalidOperationException("Invalid JSON from model (includeKeywords missing).");
@@ -83,51 +67,32 @@ public sealed class NewsFilterExtractor
         return spec;
     }
 
-    static readonly Dictionary<string, string[]> _literalAllowlist = new(StringComparer.OrdinalIgnoreCase)
+    static KernelFunction LoadFunctionFromPromptDir(string dir)
     {
-        ["crypto"] = new[] { "crypto", "cryptocurrency", "cryptocurrencies" },
-    };
+        var promptPath = Path.Combine(dir, "skprompt.txt");
+        var configPath = Path.Combine(dir, "config.json");
 
-    static string[] FilterExcludes(string userText, IEnumerable<string> excludes)
-    {
-        var text = userText.ToLowerInvariant();
-        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        if (!File.Exists(promptPath))
+            throw new FileNotFoundException($"Missing skprompt.txt in {dir}");
+        if (!File.Exists(configPath))
+            throw new FileNotFoundException($"Missing config.json in {dir}");
 
-        foreach (var ex in excludes)
-        {
-            var trimmed = ex?.Trim();
-            if (string.IsNullOrWhiteSpace(trimmed)) continue;
-            if (text.Contains(trimmed.ToLowerInvariant()))
-                allowed.Add(trimmed);
-        }
+        var cfg = PromptTemplateConfig.FromJson(File.ReadAllText(configPath));
 
-        foreach (var (root, family) in _literalAllowlist)
-        {
-            if (text.Contains(root.ToLowerInvariant()))
-            {
-                foreach (var f in family)
-                    allowed.Add(f);
-            }
-        }
+        cfg.TemplateFormat = "handlebars";
+        cfg.Template = File.ReadAllText(promptPath);
 
-        return excludes
-            .Where(e => !string.IsNullOrWhiteSpace(e))
-            .Where(e => allowed.Contains(e!.Trim()))
-            .Distinct(StringComparer.OrdinalIgnoreCase)
-            .ToArray();
+        var hbs = new HandlebarsPromptTemplateFactory();
+
+        return KernelFunctionFactory.CreateFromPrompt(cfg, hbs);
     }
 
     static string[] Normalize(string[]? arr) =>
-        arr is null
-            ? Array.Empty<string>()
-            : arr.Select(s => s?.Trim())
-                 .Where(s => !string.IsNullOrWhiteSpace(s))
-                 .Select(s => s!)
-                 .Distinct(StringComparer.OrdinalIgnoreCase)
-                 .ToArray();
+        arr is null ? Array.Empty<string>() :
+        arr.Select(s => s?.Trim()).Where(s => !string.IsNullOrWhiteSpace(s)).Select(s => s!)
+           .Distinct(StringComparer.OrdinalIgnoreCase).ToArray();
 
-    static string? NullIfEmpty(string? s) =>
-        string.IsNullOrWhiteSpace(s) ? null : s.Trim();
+    static string? NullIfEmpty(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();
 
     static string? NormalizeWindow(string? w)
     {
@@ -153,11 +118,9 @@ public sealed class NewsFilterExtractor
     {
         if (root.TryGetProperty(name, out var v) && v.ValueKind == JsonValueKind.String)
             return v.GetString();
-
         var pascal = char.ToUpperInvariant(name[0]) + name[1..];
         if (root.TryGetProperty(pascal, out v) && v.ValueKind == JsonValueKind.String)
             return v.GetString();
-
         return null;
     }
 
@@ -165,19 +128,13 @@ public sealed class NewsFilterExtractor
     {
         static string[] ReadArray(JsonElement e) =>
             e.ValueKind == JsonValueKind.Array
-                ? e.EnumerateArray()
-                   .Where(x => x.ValueKind == JsonValueKind.String)
-                   .Select(x => x.GetString() ?? string.Empty)
-                   .ToArray()
+                ? e.EnumerateArray().Where(x => x.ValueKind == JsonValueKind.String)
+                  .Select(x => x.GetString() ?? string.Empty).ToArray()
                 : Array.Empty<string>();
 
-        if (root.TryGetProperty(name, out var v))
-            return ReadArray(v);
-
+        if (root.TryGetProperty(name, out var v)) return ReadArray(v);
         var pascal = char.ToUpperInvariant(name[0]) + name[1..];
-        if (root.TryGetProperty(pascal, out v))
-            return ReadArray(v);
-
+        if (root.TryGetProperty(pascal, out v)) return ReadArray(v);
         return Array.Empty<string>();
     }
 }

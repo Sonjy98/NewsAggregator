@@ -1,108 +1,58 @@
 using System.Text.Json;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.PromptTemplates;
+using Microsoft.SemanticKernel.PromptTemplates.Handlebars;
+
 
 namespace NewsFeedBackend.Services;
 
 public sealed class CategoryNormalizer
 {
-    private readonly IChatCompletionService _chat;
-    private readonly IWebHostEnvironment _env;
-    private readonly string _promptTemplate;
-    private readonly PromptCfg _cfg;
+    private readonly Kernel _kernel;
+    private readonly KernelFunction _func;
 
-    public CategoryNormalizer(IChatCompletionService chat, IWebHostEnvironment env)
+    public CategoryNormalizer(Kernel kernel, IWebHostEnvironment env)
     {
-        _chat = chat;
-        _env  = env;
+        _kernel = kernel;
 
-        var promptsDir = Path.Combine(_env.ContentRootPath, "Prompts");
-        var promptPath = Path.Combine(promptsDir, "CategoryMap.prompt.txt");
-        var configPath = Path.Combine(promptsDir, "CategoryMap.config.json");
+        var dir = Path.Combine(env.ContentRootPath, "Prompts", "CategoryNormalizer");
+        var hbs = new HandlebarsPromptTemplateFactory();
 
-        if (!File.Exists(promptPath))
-            throw new FileNotFoundException($"Prompt file not found: {promptPath}");
+#pragma warning disable SKEXP0120
+        var plugin = _kernel.CreatePluginFromPromptDirectory(
+            pluginDirectory: dir,
+            jsonSerializerOptions: new JsonSerializerOptions(),
+            pluginName: "CategoryNormalizer",
+            promptTemplateFactory: hbs
+        );
+#pragma warning restore SKEXP0120
 
-        _promptTemplate = File.ReadAllText(promptPath);
-        _cfg = PromptCfg.LoadIfExists(configPath);
+        _kernel.Plugins.Add(plugin);
+
+        _func = plugin["Normalize"];
     }
 
     public async Task<string?> NormalizeAsync(string? freeform, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(freeform)) return null;
 
-        var prompt = _promptTemplate.Replace("{{rawCategory}}", freeform, StringComparison.Ordinal);
+        var args = new KernelArguments { ["rawCategory"] = freeform };
+        var res  = await _kernel.InvokeAsync(_func, args, ct);
+        var text = (res.GetValue<string>() ?? string.Empty).Trim();
 
-        var exec = _cfg.ToExecutionSettings(defaultTemp: 0.0, defaultTopP: 0.9, defaultMaxTokens: 32);
+        using var doc = JsonDocument.Parse(text);
+        var root = doc.RootElement;
 
-        var reply = await _chat.GetChatMessageContentAsync(
-            prompt,
-            exec,
-            kernel: null,
-            cancellationToken: ct
-        );
-
-        var text = (reply.Content ?? string.Empty).Trim();
-
-        text = text.Replace("```json", "").Replace("```", "").Trim();
-
-        if (TryParseCategoryFromObject(text, out var catObj)) return catObj;
-
-        if (TryParseJsonString(text, out var catStr)) return catStr;
-
-        var fallback = text.Trim().Trim('"');
-        return string.IsNullOrWhiteSpace(fallback) ? null : fallback;
-    }
-
-    private static bool TryParseCategoryFromObject(string json, out string? category)
-    {
-        category = null;
-        try
+        if (root.TryGetProperty("category", out var c))
         {
-            using var doc = JsonDocument.Parse(json);
-            var root = doc.RootElement;
-            if (root.ValueKind == JsonValueKind.Object &&
-                root.TryGetProperty("category", out var cProp))
+            if (c.ValueKind == JsonValueKind.Null) return null;
+            if (c.ValueKind == JsonValueKind.String)
             {
-                if (cProp.ValueKind == JsonValueKind.String)
-                {
-                    var v = cProp.GetString();
-                    if (!string.IsNullOrWhiteSpace(v))
-                    {
-                        category = v!.Trim();
-                        return true;
-                    }
-                }
-                if (cProp.ValueKind == JsonValueKind.Null)
-                {
-                    category = null;
-                    return true;
-                }
+                var val = c.GetString();
+                return string.IsNullOrWhiteSpace(val) ? null : val;
             }
         }
-        catch { /* ignore, try other shapes */ }
-        return false;
-    }
-
-    private static bool TryParseJsonString(string json, out string? value)
-    {
-        value = null;
-        try
-        {
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.ValueKind == JsonValueKind.String)
-            {
-                var v = doc.RootElement.GetString();
-                if (!string.IsNullOrWhiteSpace(v))
-                {
-                    value = v!.Trim();
-                    return true;
-                }
-                value = null;
-                return true;
-            }
-        }
-        catch { /* not a JSON string */ }
-        return false;
+        return null;
     }
 }

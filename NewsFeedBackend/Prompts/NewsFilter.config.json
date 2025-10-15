@@ -1,9 +1,0 @@
-{
-  "template_format": "handlebars",
-  "input_variables": [
-    { "name": "userQuery", "type": "string", "description": "Free-form user request", "is_required": true }
-  ],
-  "execution_settings": {
-    "default": { "temperature": 0.1, "top_p": 0.8, "max_tokens": 256 }
-  }
-}
