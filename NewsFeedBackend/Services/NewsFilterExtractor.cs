@@ -74,10 +74,47 @@ public sealed class NewsFilterExtractor
             TimeWindow       : timeWindow
         );
 
+        var filteredExcludes = FilterExcludes(userQuery, spec.ExcludeKeywords ?? Array.Empty<string>());
+        spec = spec with { ExcludeKeywords = filteredExcludes.Length == 0 ? null : filteredExcludes };
+
         if (spec.IncludeKeywords is null)
             throw new InvalidOperationException("Invalid JSON from model (includeKeywords missing).");
 
         return spec;
+    }
+
+    static readonly Dictionary<string, string[]> _literalAllowlist = new(StringComparer.OrdinalIgnoreCase)
+    {
+        ["crypto"] = new[] { "crypto", "cryptocurrency", "cryptocurrencies" },
+    };
+
+    static string[] FilterExcludes(string userText, IEnumerable<string> excludes)
+    {
+        var text = userText.ToLowerInvariant();
+        var allowed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var ex in excludes)
+        {
+            var trimmed = ex?.Trim();
+            if (string.IsNullOrWhiteSpace(trimmed)) continue;
+            if (text.Contains(trimmed.ToLowerInvariant()))
+                allowed.Add(trimmed);
+        }
+
+        foreach (var (root, family) in _literalAllowlist)
+        {
+            if (text.Contains(root.ToLowerInvariant()))
+            {
+                foreach (var f in family)
+                    allowed.Add(f);
+            }
+        }
+
+        return excludes
+            .Where(e => !string.IsNullOrWhiteSpace(e))
+            .Where(e => allowed.Contains(e!.Trim()))
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
     }
 
     static string[] Normalize(string[]? arr) =>
