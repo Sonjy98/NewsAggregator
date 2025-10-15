@@ -1,6 +1,11 @@
-import { api } from '../lib/api';
+import { api } from "../lib/api";
+import type { PreferencesDto } from "../types/Preferences";
 
-export type TimeWindow = '24h' | '7d' | '30d' | null;
+export async function getPreferences() {
+  const { data } = await api.get<PreferencesDto>("/preferences");
+  return data;
+}
+export type TimeWindow = "24h" | "7d" | "30d" | null;
 
 export type NewsFilterSpec = {
   includeKeywords: string[];
@@ -15,17 +20,31 @@ export type NLResponse = {
   total: number;
 };
 
-export const PREFS_QUERY_KEY = ['preferences'] as const;
-export const NEWS_FOR_ME_QUERY_KEY = ['news', 'for-me'] as const;
+export async function putPreferences(p: PreferencesDto) {
+  await api.put("/preferences", p);
+}
+
+export function emptyPreferences(): PreferencesDto {
+  return {
+    keywords: [],
+    excludedKeywords: [],
+    timeWindowDays: null,
+    languages: [],
+    categories: [],
+    sort: "recent",
+  };
+}
+
+// ✅ no query keys here
 
 export const PrefsApi = {
   async list(): Promise<string[]> {
-    const { data } = await api.get('/preferences');
+    const { data } = await api.get("/preferences");
     return data;
   },
 
   async add(keyword: string): Promise<string[]> {
-    const { data } = await api.post('/preferences', { keyword });
+    const { data } = await api.post("/preferences", { keyword });
     return data;
   },
 
@@ -34,7 +53,7 @@ export const PrefsApi = {
   },
 
   async parseNatural(query: string): Promise<NLResponse> {
-    const { data } = await api.post('/preferences/natural-language', { query });
+    const { data } = await api.post("/preferences/natural-language", { query });
 
     const s = data?.spec ?? {};
     const spec: NewsFilterSpec = {

@@ -5,7 +5,7 @@ import { useRemoveKeyword } from "../hooks/useRemoveKeyword";
 import { toast } from "react-hot-toast";
 import { useQueryClient } from "@tanstack/react-query";
 import { useParseAndSavePrefs } from "../hooks/useParseAndSavePrefs";
-import { PREFS_QUERY_KEY, NEWS_FOR_ME_QUERY_KEY } from "../lib/prefs";
+import { PREFS_QUERY_KEY, NEWS_FOR_ME_QUERY_KEY } from "../hooks/queryKeys";
 
 export default function Preferences() {
   const qc = useQueryClient();

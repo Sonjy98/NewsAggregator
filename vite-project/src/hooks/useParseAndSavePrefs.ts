@@ -1,5 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { PrefsApi, PREFS_QUERY_KEY, NEWS_FOR_ME_QUERY_KEY } from '../lib/prefs';
+import { PrefsApi } from '../lib/prefs';
+import { PREFS_QUERY_KEY, NEWS_FOR_ME_QUERY_KEY } from "../hooks/queryKeys";
 import type { NLResponse } from '../lib/prefs';
 
 export function useParseAndSavePrefs() {
