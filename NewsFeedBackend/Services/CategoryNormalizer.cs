@@ -1,42 +1,58 @@
 using System.Text.Json;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.PromptTemplates;
+using Microsoft.SemanticKernel.PromptTemplates.Handlebars;
+
 
 namespace NewsFeedBackend.Services;
 
 public sealed class CategoryNormalizer
 {
-    private readonly IChatCompletionService _chat;
-    private readonly IPromptLoader _prompts;
+    private readonly Kernel _kernel;
+    private readonly KernelFunction _func;
 
-    public CategoryNormalizer(IChatCompletionService chat, IPromptLoader prompts)
+    public CategoryNormalizer(Kernel kernel, IWebHostEnvironment env)
     {
-        _chat = chat;
-        _prompts = prompts;
+        _kernel = kernel;
+
+        var dir = Path.Combine(env.ContentRootPath, "Prompts", "CategoryNormalizer");
+        var hbs = new HandlebarsPromptTemplateFactory();
+
+#pragma warning disable SKEXP0120
+        var plugin = _kernel.CreatePluginFromPromptDirectory(
+            pluginDirectory: dir,
+            jsonSerializerOptions: new JsonSerializerOptions(),
+            pluginName: "CategoryNormalizer",
+            promptTemplateFactory: hbs
+        );
+#pragma warning restore SKEXP0120
+
+        _kernel.Plugins.Add(plugin);
+
+        _func = plugin["Normalize"];
     }
 
     public async Task<string?> NormalizeAsync(string? freeform, CancellationToken ct = default)
     {
         if (string.IsNullOrWhiteSpace(freeform)) return null;
 
-        var system = _prompts.Load("CategoryMap");
-        var user = JsonSerializer.Serialize(new { category = freeform });
-
-        var history = new ChatHistory();
-        history.AddSystemMessage(system);
-        history.AddUserMessage(user);
-
-        var reply = await _chat.GetChatMessageContentAsync(history, cancellationToken: ct);
-        var text = (reply.Content ?? string.Empty).Replace("```json", "").Replace("```", "").Trim();
+        var args = new KernelArguments { ["rawCategory"] = freeform };
+        var res  = await _kernel.InvokeAsync(_func, args, ct);
+        var text = (res.GetValue<string>() ?? string.Empty).Trim();
 
         using var doc = JsonDocument.Parse(text);
         var root = doc.RootElement;
-        if (root.TryGetProperty("Category", out var c) && c.ValueKind == JsonValueKind.String)
-        {
-            var val = c.GetString();
-            return string.IsNullOrWhiteSpace(val) ? null : val;
-        }
-        if (root.TryGetProperty("Category", out var n) && n.ValueKind == JsonValueKind.Null) return null;
 
+        if (root.TryGetProperty("category", out var c))
+        {
+            if (c.ValueKind == JsonValueKind.Null) return null;
+            if (c.ValueKind == JsonValueKind.String)
+            {
+                var val = c.GetString();
+                return string.IsNullOrWhiteSpace(val) ? null : val;
+            }
+        }
         return null;
     }
 }

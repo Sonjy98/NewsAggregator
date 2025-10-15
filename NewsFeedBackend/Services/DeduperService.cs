@@ -1,5 +1,9 @@
 using System.Text.Json;
-using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.SemanticKernel;
+using Microsoft.SemanticKernel.PromptTemplates;
+using Microsoft.SemanticKernel.PromptTemplates.Handlebars;
+
 
 namespace NewsFeedBackend.Services;
 
@@ -9,33 +13,47 @@ public sealed record DeduperResult(DeduperGroup[] Groups);
 
 public sealed class DeduperService
 {
-    private readonly IChatCompletionService _chat;
-    private readonly IPromptLoader _prompts;
+    private readonly Kernel _kernel;
+    private readonly KernelFunction _func;
 
-    public DeduperService(IChatCompletionService chat, IPromptLoader prompts)
+    public DeduperService(Kernel kernel, IWebHostEnvironment env)
     {
-        _chat = chat;
-        _prompts = prompts;
+        _kernel = kernel;
+
+        var dir = Path.Combine(env.ContentRootPath, "Prompts", "Deduper");
+        var hbs = new HandlebarsPromptTemplateFactory();
+
+#pragma warning disable SKEXP0120
+        var plugin = _kernel.CreatePluginFromPromptDirectory(
+            pluginDirectory: dir,
+            jsonSerializerOptions: new JsonSerializerOptions(),
+            pluginName: "Deduper",
+            promptTemplateFactory: hbs
+        );
+#pragma warning restore SKEXP0120
+
+        _kernel.Plugins.Add(plugin);
+        _func = plugin["Dedupe"];
     }
 
     public async Task<DeduperResult> DeduplicateAsync(IReadOnlyList<DeduperArticle> articles, CancellationToken ct = default)
     {
         if (articles.Count == 0) return new DeduperResult(Array.Empty<DeduperGroup>());
 
-        var system = _prompts.Load("Deduplicate");
-        var user = JsonSerializer.Serialize(new { articles });
+        var payload = articles.Select(a => new { url = a.Url, title = a.Title, source = a.Source }).ToList();
+        var articlesJson = JsonSerializer.Serialize(payload);
 
-        var history = new ChatHistory();
-        history.AddSystemMessage(system);
-        history.AddUserMessage(user);
+        var args = new KernelArguments { ["articlesJson"] = articlesJson };
 
-        var reply = await _chat.GetChatMessageContentAsync(history, cancellationToken: ct);
-        var text = (reply.Content ?? string.Empty).Replace("```json", "").Replace("```", "").Trim();
+        // execution_settings from config.json are applied automatically
+        var res = await _kernel.InvokeAsync(_func, args, ct);
+        var text = (res.GetValue<string>() ?? string.Empty).Replace("```json", "").Replace("```", "").Trim();
 
         var result = JsonSerializer.Deserialize<DeduperResult>(text, new JsonSerializerOptions
         {
             PropertyNameCaseInsensitive = true
         });
+
         return result ?? new DeduperResult(Array.Empty<DeduperGroup>());
     }
 }

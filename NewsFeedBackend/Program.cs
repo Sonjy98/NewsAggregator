@@ -1,20 +1,26 @@
+using System.Text;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.AspNetCore.Diagnostics;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
-using NewsFeedBackend.Data;
-using System.Text;
-using NewsFeedBackend;
-using NewsFeedBackend.Http;
 using Microsoft.SemanticKernel;
-using Microsoft.SemanticKernel.Connectors.Google;
 using Microsoft.SemanticKernel.ChatCompletion;
+using Microsoft.SemanticKernel.Connectors.Google;
 using Microsoft.SemanticKernel.Embeddings;
 using Microsoft.Extensions.AI;
+using NewsFeedBackend;
+using NewsFeedBackend.Data;
+using NewsFeedBackend.Errors;
+using NewsFeedBackend.Http;
 using NewsFeedBackend.Services;
+using Microsoft.AspNetCore.HttpLogging;
+using Microsoft.SemanticKernel.PromptTemplates.Handlebars;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ---------- Gemini ----------
+// ======================================================================
+// 1) AI / Semantic Kernel
+// ======================================================================
 var chatModel = builder.Configuration["GoogleAi:ChatModel"] ?? "gemini-2.5-pro";
 var embModel  = builder.Configuration["GoogleAi:EmbeddingModel"] ?? "text-embedding-004";
 var googleKey = builder.Configuration["GoogleAi:ApiKey"]
@@ -23,18 +29,44 @@ var googleKey = builder.Configuration["GoogleAi:ApiKey"]
 #pragma warning disable SKEXP0070
 builder.Services.AddSingleton<IChatCompletionService>(
     _ => new GoogleAIGeminiChatCompletionService(chatModel, googleKey));
-
 builder.Services.AddSingleton<IEmbeddingGenerator<string, Embedding<float>>>(
     _ => new GoogleAIEmbeddingGenerator(embModel, googleKey));
+
+
+builder.Services.AddSingleton(sp =>
+{
+    var cfg = sp.GetRequiredService<IConfiguration>();
+    var k = Kernel.CreateBuilder();
+
+    k.AddGoogleAIGeminiChatCompletion(
+        modelId: cfg["GoogleAi:ChatModel"] ?? "gemini-2.5-pro",
+        apiKey : cfg["GoogleAi:ApiKey"]!,
+        serviceId: "google");
+
+    return k.Build();
+});
 #pragma warning restore SKEXP0070
+
+builder.Services.AddSingleton<HandlebarsPromptTemplateFactory>();
 builder.Services.AddMemoryCache();
-builder.Services.AddSingleton<IPromptLoader, PromptLoader>();
-builder.Services.AddSingleton<NewsFilterExtractor>();
-builder.Services.AddSingleton<SemanticReranker>();
+
+// ======================================================================
+// 2) App Services (DI)
+// ======================================================================
+builder.Services.AddScoped<NewsFeedBackend.Services.NewsFilterExtractor>();
 builder.Services.AddScoped<DeduperService>();
 builder.Services.AddScoped<CategoryNormalizer>();
 
-// ---------- Logging: slim + signal-only ----------
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
+builder.Services.AddScoped<IPreferencesService, PreferencesService>();
+builder.Services.AddScoped<IExternalNewsService, ExternalNewsService>();
+builder.Services.AddScoped<IAuthService, AuthService>();
+builder.Services.AddScoped<IEmailDigestService, EmailDigestService>();
+builder.Services.AddTransient<IEmailSender, EmailSender>();
+
+// ======================================================================
+// 3) Logging (lean)
+// ======================================================================
 builder.Logging.ClearProviders();
 builder.Logging.AddSimpleConsole(o =>
 {
@@ -42,48 +74,69 @@ builder.Logging.AddSimpleConsole(o =>
     o.SingleLine = true;
 });
 
-builder.Logging.AddFilter("Microsoft.AspNetCore.Hosting.Diagnostics", LogLevel.Error);
-builder.Logging.AddFilter("Microsoft.AspNetCore.Routing.EndpointMiddleware", LogLevel.Error);
-builder.Logging.AddFilter("Microsoft.AspNetCore.Mvc.Infrastructure", LogLevel.Warning);
-builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
-builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Error);
-builder.Logging.AddFilter("System.Net.Http.HttpClient.newsdata", LogLevel.Error);
+builder.Logging.AddFilter("Microsoft", LogLevel.Warning);
+builder.Logging.AddFilter("System", LogLevel.Warning);
 
-// ---------- CORS ----------
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore", LogLevel.Warning);
+builder.Logging.AddFilter("Microsoft.EntityFrameworkCore.Database.Command", LogLevel.Warning);
+
+builder.Logging.AddFilter("System.Net.Http.HttpClient", LogLevel.Warning);
+builder.Logging.AddFilter("System.Net.Http.HttpClient.newsdata", LogLevel.Warning);
+
+
+// ======================================================================
+// 4) CORS
+// ======================================================================
 builder.Services.AddCors(o => o.AddDefaultPolicy(p =>
     p.WithOrigins("http://localhost:5173")
-    .AllowAnyHeader()
-    .AllowAnyMethod()));
+     .AllowAnyHeader()
+     .AllowAnyMethod()));
 
-// ---------- Controllers ----------
+// ======================================================================
+// 5) Controllers / Swagger
+// ======================================================================
 builder.Services.AddControllers();
+builder.Services.AddEndpointsApiExplorer();
+builder.Services.AddSwaggerGen();
 
-// ---------- EF Core (MySQL) + slow-query interceptor ----------
+builder.Services.AddHttpLogging(o =>
+{
+    o.LoggingFields =
+        HttpLoggingFields.RequestPropertiesAndHeaders |
+        HttpLoggingFields.ResponsePropertiesAndHeaders;
+});
+// ======================================================================
+// 6) EF Core (MySQL) + dev extras
+// ======================================================================
 builder.Services.AddDbContext<AppDbContext>((sp, opt) =>
 {
     var cs = builder.Configuration.GetConnectionString("Default");
     opt.UseMySql(cs, ServerVersion.AutoDetect(cs));
-
     if (builder.Environment.IsDevelopment())
-        opt.EnableSensitiveDataLogging(); // dev-only: includes parameter values
-
+        opt.EnableSensitiveDataLogging();
 });
 
-// ---------- HttpClient (single named client; no duplicates) ----------
+// ======================================================================
+// 7) HttpClient(s) — single named client ("newsdata")
+// ======================================================================
 builder.Services.AddTransient<LoggingHandler>();
 builder.Services.AddHttpClient("newsdata", (sp, c) =>
 {
     var cfg = sp.GetRequiredService<IConfiguration>().GetSection("NewsData");
-    c.BaseAddress = new Uri(cfg["BaseUrl"]!);
+    var baseUrl = cfg["BaseUrl"] ?? "https://newsdata.io/api/1/"; // sane fallback
+    c.BaseAddress = new Uri(baseUrl);
     c.DefaultRequestHeaders.Accept.Add(
         new System.Net.Http.Headers.MediaTypeWithQualityHeaderValue("application/json"));
     c.Timeout = TimeSpan.FromSeconds(15);
 })
 .AddHttpMessageHandler<LoggingHandler>();
 
-// ---------- AuthN / AuthZ (JWT) ----------
-var jwtKey = builder.Configuration["Jwt:Key"]!;
-var jwtIssuer = builder.Configuration["Jwt:Issuer"];
+// ======================================================================
+// 8) AuthN / AuthZ (JWT)
+// ======================================================================
+var jwtKey = builder.Configuration["Jwt:Key"]
+    ?? throw new InvalidOperationException("Missing Jwt:Key");
+var jwtIssuer   = builder.Configuration["Jwt:Issuer"];
 var jwtAudience = builder.Configuration["Jwt:Audience"];
 
 builder.Services
@@ -104,20 +157,42 @@ builder.Services
 
 builder.Services.AddAuthorization();
 
-
-builder.Services.AddTransient<NewsFeedBackend.IEmailSender, NewsFeedBackend.EmailSender>();
-
+// ======================================================================
+// Build
+// ======================================================================
 var app = builder.Build();
 
-// ---------- DB migrate on startup (dev-friendly) ----------
+// ======================================================================
+// 9) Swagger (always on, proxied under /api/swagger)
+// ======================================================================
+app.UseSwagger(); 
 
+app.UseSwaggerUI(c =>
+{
+    c.RoutePrefix = "swagger";
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "NewsFeed API v1");
+});
+app.UseSwaggerUI(c =>
+{
+    c.RoutePrefix = "api/swagger";
+    c.SwaggerEndpoint("/swagger/v1/swagger.json", "NewsFeed API v1");
+});
+
+// ======================================================================
+// 10) DB migrate on startup (dev-friendly)
+// ======================================================================
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
     db.Database.Migrate();
 }
 
-// ---------- Pipeline ----------
+// ======================================================================
+// 11) Pipeline
+// ======================================================================
+
+app.UseHttpLogging(); 
+
 app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();

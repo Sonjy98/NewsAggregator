@@ -1,0 +1,12 @@
+{
+  "name": "normalize",
+  "description": "Normalize a freeform category to a fixed set",
+  "template_format": "handlebars",
+  "input_variables": [
+    { "name": "rawCategory", "type": "string", "is_required": true }
+  ],
+  "execution_settings": {
+    "default": { "temperature": 0.1, "topP": 0.9, "maxOutputTokens": 64, "response_mime_type": "application/json" },
+    "google":  { "temperature": 0.1, "topP": 0.9, "maxOutputTokens": 64, "response_mime_type": "application/json" }
+  }
+}
